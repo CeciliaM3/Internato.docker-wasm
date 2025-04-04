@@ -48,6 +48,7 @@ int main(int argc, char* argv[]) {
 
     while (count < num_tuples && getline(inFile, line)) {
         outFile << line << endl;
+        cout << line << endl; // Aggiunto per debug
         count++;
     }
 

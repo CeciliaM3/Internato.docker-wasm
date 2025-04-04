@@ -1,7 +1,3 @@
-# modalità di build:
-    # collocarsi in project_v2
-    # docker build -t sample_static_copy -f docker/static/copy/Dockerfile .
-
 FROM ubuntu:latest  
 RUN mkdir -p /app/data
 WORKDIR /app  

@@ -1,7 +1,6 @@
 SHOW VARIABLES LIKE 'max_allowed_packet';
 
 CREATE DATABASE IF NOT EXISTS mydb;
-
 USE mydb;
 
 CREATE TABLE data (

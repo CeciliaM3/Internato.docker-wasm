@@ -4,7 +4,7 @@ services:
     ports:
       - 8000:8000
     environment:
-      - DB_HOST=mysql-mauri
+      - DB_HOST=mysql
       - DB_PORT=3306
       - DB_USER=root
       - DB_PASSWORD=password
@@ -19,9 +19,10 @@ services:
             - requirements.txt
   mysql:
     image: mysql
-    container_name: mysql-mauri
+    container_name: mysql-container
     volumes:
-      - ./mysql/import-in-mysql-small.sql:/docker-entrypoint-initdb.d/import-data.sql
+      - ./mysql/import-in-mysql-full.sql:/docker-entrypoint-initdb.d/import-data.sql
+      - ./mysql/aircompressor_cleaned.csv:/var/lib/mysql-files/aircompressor_cleaned.csv
     environment:
       - MYSQL_ROOT_PASSWORD=password
     command: mysqld --max-allowed-packet=1G --innodb_redo_log_capacity=1073741824

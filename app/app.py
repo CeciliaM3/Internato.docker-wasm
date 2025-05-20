@@ -1,78 +1,141 @@
 #!/bin/python3
 
 import subprocess
-
-from flask import Flask, jsonify, request
+import re
+from flask import Flask, render_template, request, Response
 
 app = Flask(__name__)
 
-# data_path = "/home/ceciliawsl/tirocinio/project_v2/data"
-data_path = "/home/gb/Scrivania/tesisti/cecilia-mauri/Internato.docker-wasm/data"
+def return_error_rightformat(response_mode, message, http_code):
+    if response_mode == "html":
+        return render_template("results.html", error=message), http_code
+    else:
+        return Response(message + "\n", status=http_code, mimetype='text/plain')
 
+# endpoints
 
 @app.get(
-    "/run_query/docker/<static_or_dynamic>/<copy_or_mount>/",
+    "/run_query/",
     strict_slashes=False,
 )
-def run_query_docker(static_or_dynamic, copy_or_mount):
+def run_query_index():
+    # Endpoint accessibile soltanto da browser
+    user_agent = request.headers.get('User-Agent', '').lower()
+    if 'curl' in user_agent or user_agent == '':
+        return Response("Endpoint for user-friendly input mode is only accessible to browsers.\n", status=403, mimetype='text/plain')
+    else:
+        return render_template("choose_mode.html"), 200
+
+# template generico dell'url: /run_query/<containerized_or_noncontainerized>/<docker_or_podman>/<executable_or_wasm>/<node_or_bun>
+# tutte le possibili combinazioni attuali (alcune non ancora sviluppate):
+# /run_query/containerized/docker/wasm/node
+# /run_query/containerized/docker/wasm/bun
+# /run_query/containerized/docker/executable
+
+# /run_query/noncontainerized/executable
+# /run_query/noncontainerized/wasm/bun
+# /run_query/noncontainerized/wasm/node
+@app.get(
+    "/run_query/<path:urlparams>",
+    strict_slashes=False,
+)
+def run_query(urlparams):
     try:
-        # Controllo della validità dei parametri
-        if static_or_dynamic not in ["static", "dynamic"]:
-            return (
-                jsonify({"error": "Versione non riconosciuta (static_or_dynamic)"}),
-                400,
-            )
-
-        if copy_or_mount not in ["copy", "mount"]:
-            return jsonify({"error": "Versione non riconosciuta (copy_or_mount)"}), 400
-
-        # Identificazione del container richiesto
-        container_name = "sample_" + static_or_dynamic + "_" + copy_or_mount
-
-        # Determinazione del numero di righe (estrazione dalla query string della richiesta http get)
-        num_rows = request.args.get("rows", default=10, type=int)
-        if num_rows <= 0:
-            return (
-                jsonify({"error": "Il numero di righe deve essere un intero positivo"}),
-                400,
-            )
-
-        # Esecuzione del container richiesto nella modalità indicata (qualora ve ne siano diverse) e cattura dell'output
-        command = ""
-        if copy_or_mount == "mount":
-            command = [
-                "docker",
-                "run",
-                "--rm",
-                "--mount",
-                f"type=bind,source={data_path},target=/app/data",
-                container_name,
-                str(num_rows),
-            ]
+        # Determinazione del tipo di client per sapere se mostrare i risultati tramite rendering di pagina html o come plain text (scelto per dare maggiore leggibilità per curl)
+        user_agent = request.headers.get('User-Agent', '').lower()
+        response_mode = ""
+        if 'curl' in user_agent or user_agent == '':
+            response_mode = "text"
         else:
-            command = ["docker", "run", "--rm", container_name, str(num_rows)]
+            response_mode = "html"
+            
+        # Determinazione del numero di righe da considerare (estrazione dalla query string della richiesta http get)
+        num_rows = request.args.get("rows", default=10, type=int)
+        if num_rows < 1:
+            return return_error_rightformat(response_mode, "The number of rows must be a positive integer.", 400)
+        
+        # Estrazione dall'url dei parametri necessari a determinare il comando da eseguire 
+        command = ""
+        execution_mode = ""
+        url_components = urlparams.split('/')
+        containerized_or_noncontainerized = url_components[0];
+        if containerized_or_noncontainerized == 'containerized':
+            docker_or_podman = url_components[1]
+            if docker_or_podman == 'docker':
+                executable_or_wasm = url_components[2]
+                if executable_or_wasm == 'wasm':
+                    node_or_bun = url_components[3]
+                    if node_or_bun == 'node': 
+                        return return_error_rightformat(response_mode, "Mode not yet available.", 503)
+                    elif node_or_bun == 'bun':
+                        return return_error_rightformat(response_mode, "Mode not yet available.", 503)
+                    else: 
+                        return return_error_rightformat(response_mode, "Invalid url for this service.", 400)
+                elif executable_or_wasm == 'executable':
+                    command = ["docker", "run", "--rm", "statistics_calc_executable", str(num_rows)]
+                    execution_mode = "program compiled to native executable with g++ and run in a Docker container"
+                else:   
+                    return return_error_rightformat(response_mode, "Invalid url for this service.", 400)
+            elif docker_or_podman == 'podman':
+                return return_error_rightformat(response_mode, "Modes not yet available.", 503)
+            else:
+                return return_error_rightformat(response_mode, "Invalid url for this service.", 400)
+        elif containerized_or_noncontainerized == 'noncontainerized':
+            executable_or_wasm = url_components[1]
+            if executable_or_wasm == 'wasm':
+                node_or_bun = url_components[2]
+                if node_or_bun == 'node': 
+                    return return_error_rightformat(response_mode, "Mode not yet available.", 503)
+                elif node_or_bun == 'bun':
+                    return return_error_rightformat(response_mode, "Mode not yet available.", 503)
+                else: 
+                    return return_error_rightformat(response_mode, "Invalid url for this service.", 400)
+            elif executable_or_wasm == 'executable':
+                command = ["../statistics_calc_libcurl", str(num_rows)]
+                execution_mode = "program compiled to native executable with g++ and run directly on wsl"
+            else:   
+                return return_error_rightformat(response_mode, "Invalid url for this service.", 400)
+        else:
+            return return_error_rightformat(response_mode, "Invalid url for this service.", 400)
 
+        # Esecuzione del comando richiesto e cattura dell'output
         result = subprocess.run(command, capture_output=True, text=True)
+        
         # Aggiunte print di debug
         print(result.stdout)
         print(result.stderr)
 
         # Verifica della correttezza dell'esecuzione del comando
         if result.returncode != 0:
-            return jsonify({"error": "Errore nell'esecuzione del container"}), 500
+            return return_error_rightformat(response_mode, "Error during the execution of the requested command.", 500)
 
         # Restituzione dei risultati al browser/chiamante
-        return jsonify({"output": result.stdout})
+        if response_mode == "html":
+            raw_result = result.stdout
+            
+            # Estrazione dei dati in strutture più piccole e mirate per poter presentare i risultati anche all'interno di una tabella in maniera ordinata
+            dividing_basedonsectiontitle_pattern = r"### (.*?) ###\s*([\s\S]*?)(?=###|$)"
+            data_blocks_strings = dict(re.findall(dividing_basedonsectiontitle_pattern, raw_result))
+            data_blocks_lists = {title: values.split() for title, values in data_blocks_strings.items()}
+            third_section_key = "AVERAGE, VARIANCE, STANDARD DEVIATION"
+            data_blocks_lists[third_section_key] = [data_blocks_lists[third_section_key][i:i + 4] for i in range(0, len(data_blocks_lists[third_section_key]), 4)]
+            fourth_section_key = "Number of anomalies (values outside of the avg +/- 3*stddev interval) per column"
+            data_blocks_lists[fourth_section_key] = [elem for index, elem in enumerate(data_blocks_lists[fourth_section_key]) if index % 2 != 0]
+            
+            return render_template("results.html", output=raw_result, processed_output=data_blocks_lists, mode=execution_mode, num_rows=num_rows), 200
+        else:
+            return Response("Version used: " + execution_mode + "\n\n" + result.stdout, status=200, mimetype='text/plain')
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return return_error_rightformat(response_mode, str(e), 500)
 
-
-@app.get("/run_query/wasm/", strict_slashes=False)
+@app.get("/currently_disabled_endpoint/", strict_slashes=False)
 def run_query_wasm():
     try:
         # TODO
         # parte mancante
+        # Probaiblmente eliminerò questo endpoint perchè integrerò anche la parte di wasm nell'endpoint "dinamico" ed omnicomprensivo sopra definito
+        return Response("Currently disabled endpoint.\n", status=503, mimetype='text/plain')
 
         # Determinazione del numero di righe (estrazione dalla query string della richiesta http get)
         num_rows = request.args.get("rows", default=10, type=int)

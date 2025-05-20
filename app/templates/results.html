@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Containers and Wasm - Results</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  </head>
+  <body>
+    {% if error %}
+      <h1 class="error-title">Error</h1>
+      <div class="error">
+        {{ error }}
+      </div>
+
+      <a href="{{ url_for('run_query_index') }}">
+        <i class="bi bi-arrow-counterclockwise"></i>
+        <p class="try-again">Try another request</p>
+      </a>
+    {% else %}
+    <h1 class="success-title">Statistical analysis results</h1>
+    <h6>Version used: <strong>{{ mode }}</strong> - Tuples considered: <strong>{{ num_rows }}</strong></h6>
+
+    <table>
+      <tbody>
+        <tr class="section-title">
+          <th colspan="6">DIFFERENCES RESERVOIRS - TP3</td>
+        </tr>
+        <tr class="column-labels-row wider-label">
+          <th colspan="2">Average</th>
+          <th colspan="2">Maximum</th>
+          <th colspan="2">Minimum</th>
+        </tr>
+        <tr class="results-row">
+          {% for value in processed_output['DIFFERENCES RESERVOIRS - TP3 (avg, max, min)'] %}
+          <td colspan="2">{{ value }}</td>
+          {% endfor %}
+        </tr>
+      </tbody>
+
+      <tbody>
+        <tr class="section-title">
+          <th colspan="6">OIL LEVEL ACTIVATION PERCENTAGE</td>
+        </tr>
+        <tr class="results-row">
+          <td colspan="6">{{ processed_output['OIL LEVEL ACTIVATION PERCENTAGE'][0] }}</td>
+        </tr>
+      </tbody>
+
+      <tbody>
+        <tr class="section-title">
+          <th colspan="6">CORRELATION BETWEEN TP2 AND OIL TEMPERATURE</td>
+        </tr>
+        <tr class="results-row">
+          <td colspan="6">{{ processed_output['CORRELATION BETWEEN TP2 AND OIL TEMPERATURE'][0] }}</td>
+        </tr>
+      </tbody>
+
+      <tbody>
+        <tr class="section-title">
+          <th colspan="6">BASIC STATISTICS</td>
+        </tr>
+        <tr class="column-labels-row">
+          <th>Parameter</th>
+          <th>Average</th>
+          <th>Variance</th>
+          <th>Standard deviation</th>
+          <th colspan="2">Number of anomalies<br>(values outside of the avg &plusmn 3 &middot stddev interval)</th>
+        </tr>
+        <tr class="results-row">
+          {% for value in processed_output['AVERAGE, VARIANCE, STANDARD DEVIATION'][0] %}
+          <td>{{ value }}</td>
+          {% endfor %}
+          <td colspan="2">{{ processed_output['Number of anomalies (values outside of the avg +/- 3*stddev interval) per column'][0] }}</td>
+        </tr>
+        <tr class="results-row">
+          {% for value in processed_output['AVERAGE, VARIANCE, STANDARD DEVIATION'][1] %}
+          <td>{{ value }}</td>
+          {% endfor %}
+          <td colspan="2">{{ processed_output['Number of anomalies (values outside of the avg +/- 3*stddev interval) per column'][1] }}</td>
+        </tr>
+        <tr class="results-row">
+          {% for value in processed_output['AVERAGE, VARIANCE, STANDARD DEVIATION'][2] %}
+          <td >{{ value }}</td>
+          {% endfor %}
+          <td colspan="2">{{ processed_output['Number of anomalies (values outside of the avg +/- 3*stddev interval) per column'][2] }}</td>
+        </tr>
+        <tr class="results-row">
+          {% for value in processed_output['AVERAGE, VARIANCE, STANDARD DEVIATION'][3] %}
+          <td>{{ value }}</td>
+          {% endfor %}
+          <td colspan="2">{{ processed_output['Number of anomalies (values outside of the avg +/- 3*stddev interval) per column'][3] }}</td>
+        </tr>
+        <tr class="results-row">
+          {% for value in processed_output['AVERAGE, VARIANCE, STANDARD DEVIATION'][4] %}
+          <td >{{ value }}</td>
+          {% endfor %}
+          <td colspan="2">{{ processed_output['Number of anomalies (values outside of the avg +/- 3*stddev interval) per column'][4] }}</td>
+        </tr>
+        <tr class="results-row">
+          {% for value in processed_output['AVERAGE, VARIANCE, STANDARD DEVIATION'][5] %}
+          <td>{{ value }}</td>
+          {% endfor %}
+          <td colspan="2">{{ processed_output['Number of anomalies (values outside of the avg +/- 3*stddev interval) per column'][5] }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="container">
+      <pre>
+        {{ output }}
+        <div class="raw-badge">
+          <p>
+            Raw<br>result
+          </p>
+        </div>
+      </pre>
+      <div class="performance">
+          Performance details will be specified here...
+      </div>
+    </div>
+
+    <footer>
+      Project aiming to conduct performance studies and confrontations regarding containerization and WebAssembly.
+       The same C++ program that obtains sample data from a database and performs some statistics computations on it
+       has been compiled and deployed in different ways: depending on the mode selected on this page, one of these versions will be run and return the 
+       results.
+    </footer>
+
+    {% endif %}
+  </body>
+</html>

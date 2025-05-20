@@ -1,0 +1,1 @@
+# Script che mi prefiggo eventualmente di popolare una volta definite anche tutte le altre modalità per consentire ulteriore immediatezza di utilizzo in vista dei test

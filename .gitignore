@@ -2,3 +2,4 @@
 **/__pycache__
 .vscode/
 import-in-mysql.sql
+db-api/mysql/aircompressor_cleaned.csv

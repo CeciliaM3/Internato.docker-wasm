@@ -23,8 +23,10 @@ using std::nan;
 using std::isnan;
 using std::abs;
 using std::transform;
+using std::getenv;
 using nlohmann::json;
 
+string url;
 size_t callback(char* ptr, size_t size, size_t nmemb, void* userdata);
 CURL* addQuery(const string& payload, CURLM* multi_handle, void* buffer, struct curl_slist* headers);
 
@@ -40,6 +42,11 @@ int main(int argc, char* argv[]) {
         cerr << "Error: number of tuples must be a positive integer." << endl;
         return 1;
     }
+
+    // determinazione dell'indirizzo/nome a cui far riferimento per contattare la porta 8000 su cui è in ascolto il servizio fastAPI
+    const char* env_host_addr = getenv("HOST_ADDR");
+    string host_address =  env_host_addr ? env_host_addr : "localhost";
+    url = "http://" + host_address + ":8000/query";
 
     /*
     Obiettivi: calcolo di:
@@ -337,7 +344,8 @@ CURL* addQuery(const string& payload, CURLM* multi_handle, void* buffer, struct 
     CURLcode res;
 
     // impostazione dell'url
-    res = curl_easy_setopt(easy_handle, CURLOPT_URL, "http://172.21.145.222:8000/query");
+    // Per wsl2: host.docker.internal (caso specifico wsl2 Mauri: 172.21.145.222). Per ambiente unix: 172.17.0.1.
+    res = curl_easy_setopt(easy_handle, CURLOPT_URL, url.c_str());
     if (res != CURLE_OK) {
         cerr << "Could not set CURLOPT_URL option for request with payload: " << payload << endl;
         cerr << "Message: " << curl_easy_strerror(res) << endl;

@@ -8,6 +8,9 @@ WORKDIR /app
 COPY statistics_calc_libcurl .
 COPY external/ external/
 
+ARG host_address_forenv=172.17.0.1
+ENV HOST_ADDR=${host_address_forenv}
+
 ENTRYPOINT ["./statistics_calc_libcurl"]
 
 # external/nlohmann/json.hpp: versione header-only della libreria precedentemente scaricata sull'host con:

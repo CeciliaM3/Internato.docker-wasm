@@ -25,15 +25,29 @@ using std::nan;
 using std::isnan;
 using std::abs;
 using std::transform;
+using std::atomic;
 using nlohmann::json;
 
-// QUESTO FILE E' GRAVEMENTE INCOMPLETO E ATTUALMENTE NON FUNZIONA E NON HA SENSO
+struct TimeoutContext {
+    string *payload; 
+    bool valid = true; 
+};
 
-size_t callback_success(char* ptr, size_t size, size_t nmemb, void* userdata);
-size_t callback_failure(char* ptr, size_t size, size_t nmemb, void* userdata);
-size_t callback_timeout(void* arg);
+struct RequestContext {
+    TimeoutContext *timeout_ctx;
+    string *JSON_buffer;
+};
 
-int still_running = 4;
+int num_tuples;
+atomic<int> completed_requests = 0; 
+atomic<bool> timeout_triggered = false; 
+vector<string> JSON_buffers(4);
+vector<emscripten_fetch_t*> fetch_structs(4, nullptr);
+
+void callback_success(emscripten_fetch_t* fetch);
+void callback_failure(emscripten_fetch_t* fetch);
+void callback_timeout(void* ctxvoid);
+void main_loop();
 
 int main(int argc, char* argv[]) {
 
@@ -42,11 +56,16 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    int num_tuples = stoi(argv[1]);
+    num_tuples = stoi(argv[1]);
     if (num_tuples < 1) {
         cerr << "Error: number of tuples must be a positive integer." << endl;
         return 1;
     }
+
+    // determinazione dell'indirizzo/nome a cui far riferimento per contattare la porta 8000 su cui è in ascolto il servizio fastAPI
+    const char* env_host_addr = getenv("HOST_ADDR");
+    string host_address =  env_host_addr ? env_host_addr : "localhost";
+    string url = "http://" + host_address + ":8000/query";
 
     /*
     Obiettivi: calcolo di:
@@ -93,267 +112,262 @@ int main(int argc, char* argv[]) {
     body["query"] = sql_means;
     payloads.push_back(body.dump());
 
+
     // ESECUZIONE DELLE QUERIES tramite richiesta http ad app.py con fastAPI, che si interfaccia poi con il database server MySQL
     // Inizializzazione delle strutture necessarie ad eseguire le richieste http tramite l'API fetch di emscripten e impostazione delle configurazioni adeguate
     emscripten_fetch_attr_t fetch_attr;
     emscripten_fetch_attr_init(&fetch_attr);
 
     strcpy(fetch_attr.requestMethod, "POST");
+
     static const char* headers[] = {
-        "Content-Type: application/json",
+        // "Content-Type: application/json",
         "Accept: application/json",
+        nullptr
     };
     fetch_attr.requestHeaders = headers;
-    fetch_attr.requestHeadersCount = 2;
-
     fetch_attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
 
     fetch_attr.onsuccess = callback_success;
     fetch_attr.onerror = callback_failure;
 
     // Chiamate asincrone
-    array<int, 4> timeout_ids;
+    vector<TimeoutContext> timeout_contexts(4);
+    vector<RequestContext> request_contexts(4);
     for (int i = 0; i < 4; i++) {
-        fetch_attr.requestData = payloads[i];
-        fetch_attr.requestDataSize = strlen(fetch_attr.requestData);
-        emscripten_fetch_t* fetch = emscripten_fetch(&fetch_attr, "http://172.21.145.222:8000/query");
-        int timeout_ids[i] = emscripten_set_timeout(callback_timeout, 120000, fetch)
-    }
+        fetch_attr.requestData = payloads[i].c_str();
+        fetch_attr.requestDataSize = payloads[i].size();
+        
+        request_contexts[i].JSON_buffer = &JSON_buffers[i];
+        request_contexts[i].timeout_ctx = &timeout_contexts[i];
+        fetch_attr.userData = &request_contexts[i];
 
-    // dichiarazione dei buffer per il salvataggio dei risultati delle query 
-    // (sia come stringhe per accogliere inizialmente i dati in formato JSON, sia come buffer dei giusti tipi di dati per poterli usare nelle computazioni successive)
-    array<double, 3> extracted_reservoisTP3diff;
-    double extracted_oillevelactivation;
-    vector<array<double, 6>> extracted_data;
-    array<double, 6> extracted_means;
-
-    // inserimento delle queries e dei relativi buffer in una struttura unica per comodità di utilizzo
-    vector<string> JSON_buffers(4);
-    // creazione e aggiunta dei vari easy_handles associati alle singole query
-    vector<emscripten_fetch_attr_t> easy_handles; 
-    // preparazione degli headers, comuni a tutte le richieste
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, "Accept: application/json");
-
-    for (int i = 0; i < 4; i++) {
-        CURL *added_handle = addQuery(payloads[i], multi_handle, &JSON_buffers[i], headers);
-        if(!added_handle) {
-            cerr << "Handle not found for request with payload: " << payloads[i] << endl;
-            for (CURL* easy_handle : easy_handles) {
-                curl_multi_remove_handle(multi_handle, easy_handle);
-                curl_easy_cleanup(easy_handle);
+        fetch_structs[i] = emscripten_fetch(&fetch_attr, url.c_str());
+        
+        if(!fetch_structs[i]) {
+            cerr << "emscripten_fetch() failed for request with payload: " << payloads[i] << endl;
+            for (auto fetch : fetch_structs) {
+                if (fetch) {
+                    emscripten_fetch_close(fetch);
+                }
             }
-            curl_multi_cleanup(multi_handle);
-            curl_slist_free_all(headers);
             return 1;
         }
-        easy_handles.push_back(added_handle);
+        timeout_contexts[i].payload = &payloads[i];
+        emscripten_async_call(callback_timeout, &timeout_contexts[i], 120000);
     }
 
-    // ciclo per la gestione delle richieste asincrone
-    int num_sockets;
-    do {
-        num_sockets = 0;
-
-        mcode = curl_multi_perform(multi_handle, &still_running); 
-        if (mcode != CURLM_OK) {
-            cerr << "curl_multi_perform() failed." << endl;
-            cerr << "Message: " << curl_multi_strerror(mcode) << endl;
-            for (CURL* easy_handle : easy_handles) {
-                curl_multi_remove_handle(multi_handle, easy_handle);
-                curl_easy_cleanup(easy_handle);
-            }
-            curl_multi_cleanup(multi_handle);
-            curl_slist_free_all(headers);
-            return 1;
-        }
-
-        mcode = curl_multi_poll(multi_handle, NULL, 0, 1000, &num_sockets);
-        if (mcode != CURLM_OK) {
-            cerr << "curl_multi_poll() failed." << endl;
-            cerr << "Message: " << curl_multi_strerror(mcode) << endl;
-
-            break;
-        }
-
-        CURLMsg* message = nullptr;
-        int remaining_msg = 0; 
-
-        while ((message = curl_multi_info_read(multi_handle, &remaining_msg))) {
-            if (message->msg == CURLMSG_DONE) {
-                CURL* retrieved_easy_handle = message->easy_handle;
-                if (message->data.result != CURLE_OK) {
-                    cerr << "One of the requests failed." << endl;
-                    cerr << "Message: " << curl_easy_strerror(message->data.result) << endl << endl;
-                    return 1;
-                }
-                curl_multi_remove_handle(multi_handle, retrieved_easy_handle);
-                curl_easy_cleanup(retrieved_easy_handle);
-            }
-        }
-    }
-    while (still_running > 0);
-    curl_multi_cleanup(multi_handle);
-    curl_slist_free_all(headers);
-
-    // parsing delle risposte JSON
-    json parsed_data;
-
-    try {
-        // 1a query
-        parsed_data = json::parse(JSON_buffers[0]);
-        extracted_reservoisTP3diff[0] = abs(parsed_data[0]["avg_diff"].get<double>());
-        extracted_reservoisTP3diff[1] = abs(parsed_data[0]["max_diff"].get<double>());
-        extracted_reservoisTP3diff[2] = abs(parsed_data[0]["min_diff"].get<double>());
-
-        // 2a query
-        parsed_data = json::parse(JSON_buffers[1]);
-        extracted_oillevelactivation = parsed_data[0]["oillevel_activation_percentage"].get<double>();
-
-        // 3a query
-        parsed_data = json::parse(JSON_buffers[2]);
-        for (const auto& row : parsed_data) {
-            array<double, 6> parsed_row;
-            parsed_row[0] = row["TP2"].get<double>();
-            parsed_row[1] = row["TP3"].get<double>();
-            parsed_row[2] = row["H1"].get<double>();
-            parsed_row[3] = row["DV_pressure"].get<double>();
-            parsed_row[4] = row["Reservoirs"].get<double>();
-            parsed_row[5] = row["Oil_temperature"].get<double>();
-            extracted_data.push_back(parsed_row);
-        }
-
-        // 4a query
-        parsed_data = json::parse(JSON_buffers[3]);
-        extracted_means[0] = parsed_data[0]["AVG(TP2)"].get<double>();
-        extracted_means[1] = parsed_data[0]["AVG(TP3)"].get<double>();
-        extracted_means[2] = parsed_data[0]["AVG(H1)"].get<double>();
-        extracted_means[3] = parsed_data[0]["AVG(DV_pressure)"].get<double>();
-        extracted_means[4] = parsed_data[0]["AVG(Reservoirs)"].get<double>();
-        extracted_means[5] = parsed_data[0]["AVG(Oil_temperature)"].get<double>();
-    }
-    catch (const json::parse_error& e) {
-        cerr << "Parsing error: " << e.what() << endl;
-    }
-    catch (const json::type_error& e) {
-        cerr << "Type error during parsing: " << e.what() << endl;
-    }
-    catch (const std::exception& e) {
-        cerr << "Generic error during parsing: " << e.what() << endl;
-    }
-
-    // STAMPE SU STDOUT ED EVENTUALI COMPUTAZIONI ULTERIORI
-    cout << "### DIFFERENCES RESERVOIRS - TP3 (avg, max, min) ###" << endl;
-    for (const auto& value : extracted_reservoisTP3diff) {
-        cout << value << "\t";
-    }
-    cout << endl << "\n### OIL LEVEL ACTIVATION PERCENTAGE ###" << endl;
-    cout << extracted_oillevelactivation << "%" << endl;
-
-    // Calcolo dell'indice di correlazione di Pearson tra le variabili TP2 (indice [0]) e Oil_temperature (indice [5])
-    double TP2_oiltemp_corr;
-    double num = 0.0, den_1 = 0.0, den_2 = 0.0;
-    if(!isnan(extracted_means[0]) && !isnan(extracted_means[5])) {
-        int num_notnan = 0;
-        for (int j = 0; j < extracted_data.size(); j++) {
-            if(!isnan(extracted_data[j][0]) && !isnan(extracted_data[j][5])) {
-                num += (extracted_data[j][0] - extracted_means[0])*(extracted_data[j][5] - extracted_means[5]);
-                den_1 += pow((extracted_data[j][0] - extracted_means[0]), 2);
-                den_2 += pow((extracted_data[j][5] - extracted_means[5]), 2);
-                num_notnan = 1;
-            }
-        }
-        if (num_notnan && den_1 > 0 && den_2 > 0) {  
-            TP2_oiltemp_corr = num / sqrt(den_1 * den_2);
-        } else {
-            TP2_oiltemp_corr = nan("");  
-        }
-    } else {
-        TP2_oiltemp_corr = nan("");
-    }
-    cout << "\n### CORRELATION BETWEEN TP2 AND OIL TEMPERATURE ###" << endl << TP2_oiltemp_corr << endl;
-
-    // Calcolo di varianze e deviazioni standard
-    array<double, 6> variances;
-    for(int i = 0; i < extracted_means.size(); i++) {
-        if(!isnan(extracted_means[i])) {
-            double accumulator = 0.0; 
-            int nans = 0;
-            for (int j = 0; j < extracted_data.size(); j++) {
-                if (!isnan(extracted_data[j][i])) {
-                    accumulator += pow((extracted_data[j][i] - extracted_means[i]), 2);
-                } else {
-                    nans++;
-                }
-            }
-            int denominator = extracted_data.size() - nans;
-            variances[i] = (denominator > 0) ? (accumulator / denominator) : nan("");
-        } else {
-            variances[i] = nan("");
-        }
-    }
-
-    array<string, 6> column_names; 
-    column_names[0] = "TP2";
-    column_names[1] = "TP3";
-    column_names[2] = "H1";
-    column_names[3] = "DV_pressure";
-    column_names[4] = "Reservoirs";
-    column_names[5] = "Oil_temperature";
-    cout << "\n### AVERAGE, VARIANCE, STANDARD DEVIATION ###" << endl;
-    for(int i = 0; i < variances.size(); i++) {
-        cout << column_names[i] << ": " << extracted_means[i] << ", " << variances[i] << ", " << sqrt(variances[i]) << endl;
-    }
-    cout << endl;
-
-    // Identificazione del numero di anomalie per ogni campo considerato
-    array<double, 6> thrice_stddevs;
-    transform(variances.begin(), variances.end(), thrice_stddevs.begin(), [](double var) {
-        return 3 * sqrt(var);
-    });
-    
-    cout << "### Number of anomalies (values outside of the avg +/- 3*stddev interval) per column ###" << endl;
-    
-    int anomalies_counter = 0; 
-    for(int i = 0; i < thrice_stddevs.size(); i++) {
-        cout << column_names[i] << ": ";
-        anomalies_counter = 0;
-        if(!isnan(extracted_means[i]) && !isnan(thrice_stddevs[i])) {
-            for (int j = 0; j < extracted_data.size(); j++) {
-                if(!isnan(extracted_data[j][i]) && (extracted_data[j][i] < extracted_means[i] - thrice_stddevs[i] || extracted_data[j][i] > extracted_means[i] + thrice_stddevs[i])) {
-                    anomalies_counter++;
-                }
-            }
-        } else {
-            cout << "NaN";
-        }
-        cout << anomalies_counter << endl;
-    }
-
-    curl_global_cleanup();
-    cout << endl << "Calculations performed considering " << num_tuples << " tuples." << endl;
-
-    return 0;
+    emscripten_set_main_loop(main_loop, 0, 1);
 }
 
 // funzione di callback per raccogliere i dati in formato JSON contenuti nella risposta inviata da fastAPI
-size_t callback(char* ptr, size_t size, size_t nmemb, void* userdata) {
-    size_t num_bytes_received = size * nmemb;
-
-    string* buffer = nullptr; 
-    if (userdata) {
-        buffer = static_cast<string*>(userdata);
-        buffer->append(ptr, num_bytes_received);
+void callback_success(emscripten_fetch_t *fetch) {
+    if (timeout_triggered) {
+        return;
     }
 
-    return num_bytes_received; 
+    RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
+    TimeoutContext* timeout_ctx = static_cast<TimeoutContext*>(ctx->timeout_ctx);
+    timeout_ctx->valid = false;
+
+    string* JSON_buffer = nullptr;
+    if(ctx->JSON_buffer && fetch->data && fetch->numBytes > 0) {
+        *(ctx->JSON_buffer) = string(fetch->data, fetch->numBytes);
+    }
+    
+    completed_requests ++;
+    emscripten_fetch_close(fetch);
 }
 
-void callback_success(emscripten_fetch_t *fetch) {
-    std::cout << "Download succeeded, " << fetch->numBytes << " bytes\n";
-    std::cout << "Response: " << std::string(fetch->data, fetch->numBytes) << std::endl;
-    still_running--;
-    emscripten_clear_timeout(timeout_id); // poi vedo da dove prendo timeout_id
+// funzione chiamata in caso di fallimento di una richiesta
+void callback_failure(emscripten_fetch_t *fetch) {
+    if (timeout_triggered) {
+        return;
+    }
+
+    RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
+    TimeoutContext* timeout_ctx = static_cast<TimeoutContext*>(ctx->timeout_ctx);
+    timeout_ctx->valid = false;
+
+    cerr << "Request failed with status code: " << fetch->status << endl;
+
+    completed_requests ++;
     emscripten_fetch_close(fetch);
+}
+
+// funzione di callback attivata allo scadere di un timeout
+void callback_timeout(void* ctxvoid) {
+    if (timeout_triggered) {
+        return;
+    }
+
+    TimeoutContext* ctx = static_cast<TimeoutContext*>(ctxvoid);
+    if(!ctx->valid) {
+        return;
+    }
+
+    cerr << "Timeout reached for request with payload: " << ctx->payload << endl << "Aborting program." << endl;
+    timeout_triggered = true;
+    for (auto fetch : fetch_structs) {
+        if (fetch) {
+            emscripten_fetch_close(fetch);
+        }
+    }
+    emscripten_cancel_main_loop();  
+    emscripten_force_exit(1);  
+}
+
+void main_loop() {
+    if (timeout_triggered) {
+        return;  
+    }
+
+    // sezione di computazioni da svolgere una volta ricevute tutte e 4 le risposte
+    if (completed_requests >= 4) {
+        // dichiarazione dei buffer per il salvataggio dei risultati delle query 
+        // (sia come stringhe per accogliere inizialmente i dati in formato JSON, sia come buffer dei giusti tipi di dati per poterli usare nelle computazioni successive)
+        array<double, 3> extracted_reservoisTP3diff;
+        double extracted_oillevelactivation;
+        vector<array<double, 6>> extracted_data;
+        array<double, 6> extracted_means;
+        
+        // parsing delle risposte JSON
+        json parsed_data;
+
+        try {
+            // 1a query
+            parsed_data = json::parse(JSON_buffers[0]);
+            extracted_reservoisTP3diff[0] = abs(parsed_data[0]["avg_diff"].get<double>());
+            extracted_reservoisTP3diff[1] = abs(parsed_data[0]["max_diff"].get<double>());
+            extracted_reservoisTP3diff[2] = abs(parsed_data[0]["min_diff"].get<double>());
+
+            // 2a query
+            parsed_data = json::parse(JSON_buffers[1]);
+            extracted_oillevelactivation = parsed_data[0]["oillevel_activation_percentage"].get<double>();
+
+            // 3a query
+            parsed_data = json::parse(JSON_buffers[2]);
+            for (const auto& row : parsed_data) {
+                array<double, 6> parsed_row;
+                parsed_row[0] = row["TP2"].get<double>();
+                parsed_row[1] = row["TP3"].get<double>();
+                parsed_row[2] = row["H1"].get<double>();
+                parsed_row[3] = row["DV_pressure"].get<double>();
+                parsed_row[4] = row["Reservoirs"].get<double>();
+                parsed_row[5] = row["Oil_temperature"].get<double>();
+                extracted_data.push_back(parsed_row);
+            }
+
+            // 4a query
+            parsed_data = json::parse(JSON_buffers[3]);
+            extracted_means[0] = parsed_data[0]["AVG(TP2)"].get<double>();
+            extracted_means[1] = parsed_data[0]["AVG(TP3)"].get<double>();
+            extracted_means[2] = parsed_data[0]["AVG(H1)"].get<double>();
+            extracted_means[3] = parsed_data[0]["AVG(DV_pressure)"].get<double>();
+            extracted_means[4] = parsed_data[0]["AVG(Reservoirs)"].get<double>();
+            extracted_means[5] = parsed_data[0]["AVG(Oil_temperature)"].get<double>();
+        }
+        catch (const json::parse_error& e) {
+            cerr << "Parsing error: " << e.what() << endl;
+        }
+        catch (const json::type_error& e) {
+            cerr << "Type error during parsing: " << e.what() << endl;
+        }
+        catch (const std::exception& e) {
+            cerr << "Generic error during parsing: " << e.what() << endl;
+        }
+
+        // STAMPE SU STDOUT ED EVENTUALI COMPUTAZIONI ULTERIORI
+        cout << "### DIFFERENCES RESERVOIRS - TP3 (avg, max, min) ###" << endl;
+        for (const auto& value : extracted_reservoisTP3diff) {
+            cout << value << "\t";
+        }
+        cout << endl << "\n### OIL LEVEL ACTIVATION PERCENTAGE ###" << endl;
+        cout << extracted_oillevelactivation << "%" << endl;
+
+        // Calcolo dell'indice di correlazione di Pearson tra le variabili TP2 (indice [0]) e Oil_temperature (indice [5])
+        double TP2_oiltemp_corr;
+        double num = 0.0, den_1 = 0.0, den_2 = 0.0;
+        if(!isnan(extracted_means[0]) && !isnan(extracted_means[5])) {
+            int num_notnan = 0;
+            for (int j = 0; j < extracted_data.size(); j++) {
+                if(!isnan(extracted_data[j][0]) && !isnan(extracted_data[j][5])) {
+                    num += (extracted_data[j][0] - extracted_means[0])*(extracted_data[j][5] - extracted_means[5]);
+                    den_1 += pow((extracted_data[j][0] - extracted_means[0]), 2);
+                    den_2 += pow((extracted_data[j][5] - extracted_means[5]), 2);
+                    num_notnan = 1;
+                }
+            }
+            if (num_notnan && den_1 > 0 && den_2 > 0) {  
+                TP2_oiltemp_corr = num / sqrt(den_1 * den_2);
+            } else {
+                TP2_oiltemp_corr = nan("");  
+            }
+        } else {
+            TP2_oiltemp_corr = nan("");
+        }
+        cout << "\n### CORRELATION BETWEEN TP2 AND OIL TEMPERATURE ###" << endl << TP2_oiltemp_corr << endl;
+
+        // Calcolo di varianze e deviazioni standard
+        array<double, 6> variances;
+        for(int i = 0; i < extracted_means.size(); i++) {
+            if(!isnan(extracted_means[i])) {
+                double accumulator = 0.0; 
+                int nans = 0;
+                for (int j = 0; j < extracted_data.size(); j++) {
+                    if (!isnan(extracted_data[j][i])) {
+                        accumulator += pow((extracted_data[j][i] - extracted_means[i]), 2);
+                    } else {
+                        nans++;
+                    }
+                }
+                int denominator = extracted_data.size() - nans;
+                variances[i] = (denominator > 0) ? (accumulator / denominator) : nan("");
+            } else {
+                variances[i] = nan("");
+            }
+        }
+
+        array<string, 6> column_names; 
+        column_names[0] = "TP2";
+        column_names[1] = "TP3";
+        column_names[2] = "H1";
+        column_names[3] = "DV_pressure";
+        column_names[4] = "Reservoirs";
+        column_names[5] = "Oil_temperature";
+        cout << "\n### AVERAGE, VARIANCE, STANDARD DEVIATION ###" << endl;
+        for(int i = 0; i < variances.size(); i++) {
+            cout << column_names[i] << ": " << extracted_means[i] << ", " << variances[i] << ", " << sqrt(variances[i]) << endl;
+        }
+        cout << endl;
+
+        // Identificazione del numero di anomalie per ogni campo considerato
+        array<double, 6> thrice_stddevs;
+        transform(variances.begin(), variances.end(), thrice_stddevs.begin(), [](double var) {
+            return 3 * sqrt(var);
+        });
+        
+        cout << "### Number of anomalies (values outside of the avg +/- 3*stddev interval) per column ###" << endl;
+        
+        int anomalies_counter = 0; 
+        for(int i = 0; i < thrice_stddevs.size(); i++) {
+            cout << column_names[i] << ": ";
+            anomalies_counter = 0;
+            if(!isnan(extracted_means[i]) && !isnan(thrice_stddevs[i])) {
+                for (int j = 0; j < extracted_data.size(); j++) {
+                    if(!isnan(extracted_data[j][i]) && (extracted_data[j][i] < extracted_means[i] - thrice_stddevs[i] || extracted_data[j][i] > extracted_means[i] + thrice_stddevs[i])) {
+                        anomalies_counter++;
+                    }
+                }
+            } else {
+                cout << "NaN";
+            }
+            cout << anomalies_counter << endl;
+        }
+
+        cout << endl << "Calculations performed considering " << num_tuples << " tuples." << endl;
+
+        emscripten_cancel_main_loop();  
+        emscripten_force_exit(0);      
+    }
 }

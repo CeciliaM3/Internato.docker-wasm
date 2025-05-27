@@ -14,7 +14,6 @@ using std::endl;
 using std::ofstream;
 using std::array;
 using std::vector;
-using std::tuple;
 using std::string;
 using std::to_string;
 using std::replace;
@@ -28,13 +27,8 @@ using std::transform;
 using std::atomic;
 using nlohmann::json;
 
-struct TimeoutContext {
-    string *payload; 
-    bool valid = true; 
-};
-
 struct RequestContext {
-    TimeoutContext *timeout_ctx;
+    int timeout_id;
     string *JSON_buffer;
 };
 
@@ -46,7 +40,7 @@ vector<emscripten_fetch_t*> fetch_structs(4, nullptr);
 
 void callback_success(emscripten_fetch_t* fetch);
 void callback_failure(emscripten_fetch_t* fetch);
-void callback_timeout(void* ctxvoid);
+void callback_timeout(void* arg);
 void main_loop();
 
 int main(int argc, char* argv[]) {
@@ -132,29 +126,28 @@ int main(int argc, char* argv[]) {
     fetch_attr.onerror = callback_failure;
 
     // Chiamate asincrone
-    vector<TimeoutContext> timeout_contexts(4);
     vector<RequestContext> request_contexts(4);
     for (int i = 0; i < 4; i++) {
         fetch_attr.requestData = payloads[i].c_str();
         fetch_attr.requestDataSize = payloads[i].size();
         
         request_contexts[i].JSON_buffer = &JSON_buffers[i];
-        request_contexts[i].timeout_ctx = &timeout_contexts[i];
         fetch_attr.userData = &request_contexts[i];
 
         fetch_structs[i] = emscripten_fetch(&fetch_attr, url.c_str());
         
         if(!fetch_structs[i]) {
             cerr << "emscripten_fetch() failed for request with payload: " << payloads[i] << endl;
-            for (auto fetch : fetch_structs) {
+            for (auto& fetch : fetch_structs) {
                 if (fetch) {
+                    RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
+                    emscripten_clear_timeout(ctx->timeout_id);
                     emscripten_fetch_close(fetch);
                 }
             }
             return 1;
         }
-        timeout_contexts[i].payload = &payloads[i];
-        emscripten_async_call(callback_timeout, &timeout_contexts[i], 120000);
+        request_contexts[i].timeout_id = emscripten_async_call(callback_timeout, &payloads[i], 120000);
     }
 
     emscripten_set_main_loop(main_loop, 0, 1);
@@ -167,8 +160,7 @@ void callback_success(emscripten_fetch_t *fetch) {
     }
 
     RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
-    TimeoutContext* timeout_ctx = static_cast<TimeoutContext*>(ctx->timeout_ctx);
-    timeout_ctx->valid = false;
+    emscripten_clear_timeout(ctx->timeout_id);
 
     string* JSON_buffer = nullptr;
     if(ctx->JSON_buffer && fetch->data && fetch->numBytes > 0) {
@@ -186,8 +178,7 @@ void callback_failure(emscripten_fetch_t *fetch) {
     }
 
     RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
-    TimeoutContext* timeout_ctx = static_cast<TimeoutContext*>(ctx->timeout_ctx);
-    timeout_ctx->valid = false;
+    emscripten_clear_timeout(ctx->timeout_id);
 
     cerr << "Request failed with status code: " << fetch->status << endl;
 
@@ -196,20 +187,17 @@ void callback_failure(emscripten_fetch_t *fetch) {
 }
 
 // funzione di callback attivata allo scadere di un timeout
-void callback_timeout(void* ctxvoid) {
+void callback_timeout(void* arg) {
     if (timeout_triggered) {
-        return;
-    }
-
-    TimeoutContext* ctx = static_cast<TimeoutContext*>(ctxvoid);
-    if(!ctx->valid) {
         return;
     }
 
     cerr << "Timeout reached for request with payload: " << ctx->payload << endl << "Aborting program." << endl;
     timeout_triggered = true;
-    for (auto fetch : fetch_structs) {
+    for (auto& fetch : fetch_structs) {
         if (fetch) {
+            RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
+            emscripten_clear_timeout(ctx->timeout_id);
             emscripten_fetch_close(fetch);
         }
     }

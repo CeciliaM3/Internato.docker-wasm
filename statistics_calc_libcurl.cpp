@@ -12,7 +12,6 @@ using std::endl;
 using std::ofstream;
 using std::array;
 using std::vector;
-using std::tuple;
 using std::string;
 using std::to_string;
 using std::replace;

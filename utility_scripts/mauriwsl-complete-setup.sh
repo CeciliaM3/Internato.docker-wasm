@@ -1,1 +1,9 @@
-# Script che mi prefiggo eventualmente di popolare una volta definite anche tutte le altre modalità per consentire ulteriore immediatezza di utilizzo in vista dei test
+#!/bin/bash
+set -e
+cd "$(dirname "$0")"
+
+gnome-terminal -- bash -c "./docker-compose-shutdown-restart.sh; exec bash" 
+./all-docker-destroy-rebuild.sh
+cd ../app
+printf "\n############################################################\n\nNow starting Flask server.\n\n"
+python3 app.py

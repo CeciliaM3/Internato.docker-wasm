@@ -4,10 +4,22 @@
     <meta charset="UTF-8">
     <title>Containers and Wasm - Choose Mode</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
   </head>
   <body>
     
-    <h1>A form for easier mode selection will be inserted in this page.</h1>
+    <h1 class="success-title">Select execution mode</h1>
+    <div>
+      <h3><a class="select_mode" href="/run_query/containerized/docker/wasm/node">Wasm run with node in Docker container</a></h3>
+      <h3><a class="select_mode" href="/run_query/containerized/docker/wasm/bun">Wasm run with bun in Docker container</a></h3>
+      <h3><a class="select_mode" href="/run_query/containerized/docker/executable">Executable run in Docker container</a></h3>
+      <h3><a class="select_mode" href="/run_query/noncontainerized/wasm/node">Wasm run with node on wsl</a></h3>
+      <h3><a class="select_mode" href="/run_query/noncontainerized/wasm/bun">Wasm run with bun on wsl</a></h3>
+      <h3><a class="select_mode" href="/run_query/noncontainerized/executable">Executable run on wsl</a></h3>
+    </div>
+
+      <label for="num_tuples" style="margin-top:35px;"><strong>Number tuples to consider:</strong></label><br>
+      <input type="number" id="num_tuples" name="num_tuples" value="10" min="1"/>
 
     <footer class="fixed">
       Project aiming to conduct performance studies and confrontations regarding containerization and WebAssembly.

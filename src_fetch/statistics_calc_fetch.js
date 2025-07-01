@@ -313,8 +313,6 @@ var HEAP,
 
 var runtimeInitialized = false;
 
-var runtimeExited = false;
-
 /**
  * Indicates whether filename is delivered via file protocol (as opposed to http/https)
  * @noinline
@@ -552,15 +550,6 @@ function preMain() {
   
 }
 
-function exitRuntime() {
-  assert(!runtimeExited);
-  checkStackCookie();
-  ___funcs_on_exit(); // Native atexit() functions
-  FS.quit();
-TTY.shutdown();
-  runtimeExited = true;
-}
-
 function postRun() {
   checkStackCookie();
 
@@ -689,7 +678,6 @@ function abort(what) {
 function createExportWrapper(name, nargs) {
   return (...args) => {
     assert(runtimeInitialized, `native function \`${name}\` called before runtime initialization`);
-    assert(!runtimeExited, `native function \`${name}\` called after runtime exit (use NO_EXIT_RUNTIME to keep it alive after main() exits)`);
     var f = wasmExports[name];
     assert(f, `exported native function \`${name}\` not found`);
     // Only assert for too many arguments. Too few can be valid since the missing arguments will be zero filled.
@@ -897,7 +885,7 @@ async function createWasm() {
     }
   }
 
-  var noExitRuntime = Module['noExitRuntime'] || false;
+  var noExitRuntime = Module['noExitRuntime'] || true;
 
   var ptrToString = (ptr) => {
       assert(typeof ptr === 'number');
@@ -1213,100 +1201,6 @@ async function createWasm() {
       }
     };
 
-  var handleException = (e) => {
-      // Certain exception types we do not treat as errors since they are used for
-      // internal control flow.
-      // 1. ExitStatus, which is thrown by exit()
-      // 2. "unwind", which is thrown by emscripten_unwind_to_js_event_loop() and others
-      //    that wish to return to JS event loop.
-      if (e instanceof ExitStatus || e == 'unwind') {
-        return EXITSTATUS;
-      }
-      checkStackCookie();
-      if (e instanceof WebAssembly.RuntimeError) {
-        if (_emscripten_stack_get_current() <= 0) {
-          err('Stack overflow detected.  You can try increasing -sSTACK_SIZE (currently set to 65536)');
-        }
-      }
-      quit_(1, e);
-    };
-  
-  
-  var runtimeKeepaliveCounter = 0;
-  var keepRuntimeAlive = () => noExitRuntime || runtimeKeepaliveCounter > 0;
-  var _proc_exit = (code) => {
-      EXITSTATUS = code;
-      if (!keepRuntimeAlive()) {
-        Module['onExit']?.(code);
-        ABORT = true;
-      }
-      quit_(code, new ExitStatus(code));
-    };
-  
-  
-  /** @suppress {duplicate } */
-  /** @param {boolean|number=} implicit */
-  var exitJS = (status, implicit) => {
-      EXITSTATUS = status;
-  
-      if (!keepRuntimeAlive()) {
-        exitRuntime();
-      }
-  
-      // if exit() was called explicitly, warn the user if the runtime isn't actually being shut down
-      if (keepRuntimeAlive() && !implicit) {
-        var msg = `program exited (with status: ${status}), but keepRuntimeAlive() is set (counter=${runtimeKeepaliveCounter}) due to an async operation, so halting execution but not exiting the runtime or preventing further async execution (you can use emscripten_force_exit, if you want to force a true shutdown)`;
-        err(msg);
-      }
-  
-      _proc_exit(status);
-    };
-  var _exit = exitJS;
-  
-  
-  var maybeExit = () => {
-      if (runtimeExited) {
-        return;
-      }
-      if (!keepRuntimeAlive()) {
-        try {
-          _exit(EXITSTATUS);
-        } catch (e) {
-          handleException(e);
-        }
-      }
-    };
-  var callUserCallback = (func) => {
-      if (runtimeExited || ABORT) {
-        err('user callback triggered after runtime exited or application aborted.  Ignoring.');
-        return;
-      }
-      try {
-        func();
-        maybeExit();
-      } catch (e) {
-        handleException(e);
-      }
-    };
-  
-  var runtimeKeepalivePush = () => {
-      runtimeKeepaliveCounter += 1;
-    };
-  
-  var runtimeKeepalivePop = () => {
-      assert(runtimeKeepaliveCounter > 0);
-      runtimeKeepaliveCounter -= 1;
-    };
-  /** @param {number=} timeout */
-  var safeSetTimeout = (func, timeout) => {
-      runtimeKeepalivePush();
-      return setTimeout(() => {
-        runtimeKeepalivePop();
-        callUserCallback(func);
-      }, timeout);
-    };
-  
-  
   
   var _emscripten_set_main_loop_timing = (mode, value) => {
       MainLoop.timingMode = mode;
@@ -1318,7 +1212,7 @@ async function createWasm() {
       }
   
       if (!MainLoop.running) {
-        runtimeKeepalivePush();
+        
         MainLoop.running = true;
       }
       if (mode == 0) {
@@ -1371,6 +1265,62 @@ async function createWasm() {
   var _emscripten_get_now = () => performance.now();
   
   
+  var runtimeKeepaliveCounter = 0;
+  var keepRuntimeAlive = () => noExitRuntime || runtimeKeepaliveCounter > 0;
+  var _proc_exit = (code) => {
+      EXITSTATUS = code;
+      if (!keepRuntimeAlive()) {
+        Module['onExit']?.(code);
+        ABORT = true;
+      }
+      quit_(code, new ExitStatus(code));
+    };
+  
+  
+  /** @suppress {duplicate } */
+  /** @param {boolean|number=} implicit */
+  var exitJS = (status, implicit) => {
+      EXITSTATUS = status;
+  
+      checkUnflushedContent();
+  
+      // if exit() was called explicitly, warn the user if the runtime isn't actually being shut down
+      if (keepRuntimeAlive() && !implicit) {
+        var msg = `program exited (with status: ${status}), but keepRuntimeAlive() is set (counter=${runtimeKeepaliveCounter}) due to an async operation, so halting execution but not exiting the runtime or preventing further async execution (you can use emscripten_force_exit, if you want to force a true shutdown)`;
+        err(msg);
+      }
+  
+      _proc_exit(status);
+    };
+  var _exit = exitJS;
+  
+  var handleException = (e) => {
+      // Certain exception types we do not treat as errors since they are used for
+      // internal control flow.
+      // 1. ExitStatus, which is thrown by exit()
+      // 2. "unwind", which is thrown by emscripten_unwind_to_js_event_loop() and others
+      //    that wish to return to JS event loop.
+      if (e instanceof ExitStatus || e == 'unwind') {
+        return EXITSTATUS;
+      }
+      checkStackCookie();
+      if (e instanceof WebAssembly.RuntimeError) {
+        if (_emscripten_stack_get_current() <= 0) {
+          err('Stack overflow detected.  You can try increasing -sSTACK_SIZE (currently set to 65536)');
+        }
+      }
+      quit_(1, e);
+    };
+  
+  var maybeExit = () => {
+      if (!keepRuntimeAlive()) {
+        try {
+          _exit(EXITSTATUS);
+        } catch (e) {
+          handleException(e);
+        }
+      }
+    };
   
     /**
      * @param {number=} arg
@@ -1384,7 +1334,7 @@ async function createWasm() {
       var thisMainLoopId = MainLoop.currentlyRunningMainloop;
       function checkIsRunning() {
         if (thisMainLoopId < MainLoop.currentlyRunningMainloop) {
-          runtimeKeepalivePop();
+          
           maybeExit();
           return false;
         }
@@ -1465,6 +1415,19 @@ async function createWasm() {
       }
     };
   
+  
+  var callUserCallback = (func) => {
+      if (ABORT) {
+        err('user callback triggered after runtime exited or application aborted.  Ignoring.');
+        return;
+      }
+      try {
+        func();
+        maybeExit();
+      } catch (e) {
+        handleException(e);
+      }
+    };
   
   var MainLoop = {
   running:false,
@@ -1551,43 +1514,6 @@ async function createWasm() {
         RAF(func);
       },
   };
-  
-  
-  var safeRequestAnimationFrame = (func) => {
-      runtimeKeepalivePush();
-      return MainLoop.requestAnimationFrame(() => {
-        runtimeKeepalivePop();
-        callUserCallback(func);
-      });
-    };
-  
-  var wasmTableMirror = [];
-  
-  /** @type {WebAssembly.Table} */
-  var wasmTable;
-  var getWasmTableEntry = (funcPtr) => {
-      var func = wasmTableMirror[funcPtr];
-      if (!func) {
-        /** @suppress {checkTypes} */
-        wasmTableMirror[funcPtr] = func = wasmTable.get(funcPtr);
-      }
-      /** @suppress {checkTypes} */
-      assert(wasmTable.get(funcPtr) == func, 'JavaScript-side Wasm function table mirror is out of date!');
-      return func;
-    };
-  var _emscripten_async_call = (func, arg, millis) => {
-      var wrapper = () => getWasmTableEntry(func)(arg);
-  
-      if (millis >= 0
-        // node does not support requestAnimationFrame
-        || ENVIRONMENT_IS_NODE
-      ) {
-        safeSetTimeout(wrapper, millis);
-      } else {
-        safeRequestAnimationFrame(wrapper);
-      }
-    };
-
   var _emscripten_cancel_main_loop = () => {
       MainLoop.pause();
       MainLoop.func = null;
@@ -1609,7 +1535,9 @@ async function createWasm() {
       noExitRuntime = false;
       runtimeKeepaliveCounter = 0;
     };
+  
   var _emscripten_force_exit = (status) => {
+      warnOnce('emscripten_force_exit cannot actually shut down the runtime, as the build does not have EXIT_RUNTIME set');
       __emscripten_runtime_keepalive_clear();
       _exit(status);
     };
@@ -1636,6 +1564,20 @@ async function createWasm() {
     };
 
   
+  var wasmTableMirror = [];
+  
+  /** @type {WebAssembly.Table} */
+  var wasmTable;
+  var getWasmTableEntry = (funcPtr) => {
+      var func = wasmTableMirror[funcPtr];
+      if (!func) {
+        /** @suppress {checkTypes} */
+        wasmTableMirror[funcPtr] = func = wasmTable.get(funcPtr);
+      }
+      /** @suppress {checkTypes} */
+      assert(wasmTable.get(funcPtr) == func, 'JavaScript-side Wasm function table mirror is out of date!');
+      return func;
+    };
   var _emscripten_set_main_loop = (func, fps, simulateInfiniteLoop) => {
       var iterFunc = getWasmTableEntry(func);
       setMainLoop(iterFunc, fps, simulateInfiniteLoop);
@@ -1700,7 +1642,6 @@ async function createWasm() {
       Fetch.openDatabase('emscripten_filesystem', 1, onsuccess, onerror);
     },
   };
-  
   
   function fetchXHR(fetch, onsuccess, onerror, onprogress, onreadystatechange) {
     var url = HEAPU32[(((fetch)+(8))>>2)];
@@ -1847,7 +1788,7 @@ async function createWasm() {
     xhr.onreadystatechange = (e) => {
       // check if xhr was aborted by user and don't try to call back
       if (!Fetch.xhrs.has(id)) {
-        runtimeKeepalivePop();
+        
         return;
       }
       HEAP16[(((fetch)+(40))>>1)] = xhr.readyState
@@ -2007,12 +1948,10 @@ async function createWasm() {
   }
   
   
-  
-  
   function _emscripten_start_fetch(fetch, successcb, errorcb, progresscb, readystatechangecb) {
     // Avoid shutting down the runtime since we want to wait for the async
     // response.
-    runtimeKeepalivePush();
+    
   
     var fetch_attr = fetch + 108;
     var onsuccess = HEAPU32[(((fetch_attr)+(36))>>2)];
@@ -2031,7 +1970,7 @@ async function createWasm() {
     }
   
     var reportSuccess = (fetch, xhr, e) => {
-      runtimeKeepalivePop();
+      
       doCallback(() => {
         if (onsuccess) getWasmTableEntry(onsuccess)(fetch);
         else successcb?.(fetch);
@@ -2046,7 +1985,7 @@ async function createWasm() {
     };
   
     var reportError = (fetch, xhr, e) => {
-      runtimeKeepalivePop();
+      
       doCallback(() => {
         if (onerror) getWasmTableEntry(onerror)(fetch);
         else errorcb?.(fetch);
@@ -2066,14 +2005,14 @@ async function createWasm() {
   
     var cacheResultAndReportSuccess = (fetch, xhr, e) => {
       var storeSuccess = (fetch, xhr, e) => {
-        runtimeKeepalivePop();
+        
         doCallback(() => {
           if (onsuccess) getWasmTableEntry(onsuccess)(fetch);
           else successcb?.(fetch);
         });
       };
       var storeError = (fetch, xhr, e) => {
-        runtimeKeepalivePop();
+        
         doCallback(() => {
           if (onsuccess) getWasmTableEntry(onsuccess)(fetch);
           else successcb?.(fetch);
@@ -4894,6 +4833,8 @@ Fetch.init();;
 function checkIncomingModuleAPI() {
   ignoredModuleProp('fetchSettings');
 }
+function set_timeout(delay_ms,payload,func_ptr) { return setTimeout(function() { dynCall('vi', func_ptr, [payload]); }, delay_ms); }
+function clear_timeout(id) { clearTimeout(id); }
 var wasmImports = {
   /** @export */
   __assert_fail: ___assert_fail,
@@ -4904,7 +4845,7 @@ var wasmImports = {
   /** @export */
   _tzset_js: __tzset_js,
   /** @export */
-  emscripten_async_call: _emscripten_async_call,
+  clear_timeout,
   /** @export */
   emscripten_cancel_main_loop: _emscripten_cancel_main_loop,
   /** @export */
@@ -4930,15 +4871,17 @@ var wasmImports = {
   /** @export */
   fd_seek: _fd_seek,
   /** @export */
-  fd_write: _fd_write
+  fd_write: _fd_write,
+  /** @export */
+  set_timeout
 };
 var wasmExports;
 createWasm();
 var ___wasm_call_ctors = createExportWrapper('__wasm_call_ctors', 0);
 var _main = Module['_main'] = createExportWrapper('__main_argc_argv', 2);
+var _callback_timeout = Module['_callback_timeout'] = createExportWrapper('callback_timeout', 1);
 var _malloc = createExportWrapper('malloc', 1);
 var _free = createExportWrapper('free', 1);
-var ___funcs_on_exit = createExportWrapper('__funcs_on_exit', 0);
 var _fflush = createExportWrapper('fflush', 1);
 var _strerror = createExportWrapper('strerror', 1);
 var _emscripten_stack_init = () => (_emscripten_stack_init = wasmExports['emscripten_stack_init'])();
@@ -4977,6 +4920,8 @@ var missingLibrarySymbols = [
   'autoResumeAudioContext',
   'getDynCaller',
   'dynCall',
+  'runtimeKeepalivePush',
+  'runtimeKeepalivePop',
   'asmjsMangle',
   'getNativeTypeSize',
   'addOnInit',
@@ -5061,7 +5006,9 @@ var missingLibrarySymbols = [
   'checkWasiClock',
   'wasiRightsToMuslOFlags',
   'wasiOFlagsToMuslOFlags',
+  'safeSetTimeout',
   'setImmediateWrapped',
+  'safeRequestAnimationFrame',
   'clearImmediateWrapped',
   'registerPostMainLoop',
   'registerPreMainLoop',
@@ -5152,8 +5099,6 @@ var unexportedSymbols = [
   'getExecutableName',
   'handleException',
   'keepRuntimeAlive',
-  'runtimeKeepalivePush',
-  'runtimeKeepalivePop',
   'callUserCallback',
   'maybeExit',
   'asyncLoad',
@@ -5192,8 +5137,6 @@ var unexportedSymbols = [
   'doWritev',
   'initRandomFill',
   'randomFill',
-  'safeSetTimeout',
-  'safeRequestAnimationFrame',
   'emSetImmediate',
   'emClearImmediate_deps',
   'emClearImmediate',
@@ -5341,6 +5284,45 @@ function run(args = arguments_) {
     doRun();
   }
   checkStackCookie();
+}
+
+function checkUnflushedContent() {
+  // Compiler settings do not allow exiting the runtime, so flushing
+  // the streams is not possible. but in ASSERTIONS mode we check
+  // if there was something to flush, and if so tell the user they
+  // should request that the runtime be exitable.
+  // Normally we would not even include flush() at all, but in ASSERTIONS
+  // builds we do so just for this check, and here we see if there is any
+  // content to flush, that is, we check if there would have been
+  // something a non-ASSERTIONS build would have not seen.
+  // How we flush the streams depends on whether we are in SYSCALLS_REQUIRE_FILESYSTEM=0
+  // mode (which has its own special function for this; otherwise, all
+  // the code is inside libc)
+  var oldOut = out;
+  var oldErr = err;
+  var has = false;
+  out = err = (x) => {
+    has = true;
+  }
+  try { // it doesn't matter if it fails
+    _fflush(0);
+    // also flush in the JS FS layer
+    ['stdout', 'stderr'].forEach((name) => {
+      var info = FS.analyzePath('/dev/' + name);
+      if (!info) return;
+      var stream = info.object;
+      var rdev = stream.rdev;
+      var tty = TTY.ttys[rdev];
+      if (tty?.output?.length) {
+        has = true;
+      }
+    });
+  } catch(e) {}
+  out = oldOut;
+  err = oldErr;
+  if (has) {
+    warnOnce('stdio streams had content in them that was not flushed. you should set EXIT_RUNTIME to 1 (see the Emscripten FAQ), or make sure to emit a newline when you printf etc.');
+  }
 }
 
 if (Module['preInit']) {

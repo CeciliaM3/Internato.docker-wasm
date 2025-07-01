@@ -13,11 +13,12 @@
         {{ error }}
       </div>
 
-      <a href="{{ url_for('run_query_index') }}">
+      <a class="retry" href="{{ url_for('run_query_index') }}">
         <i class="bi bi-arrow-counterclockwise"></i>
         <p class="try-again">Try another request</p>
       </a>
     {% else %}
+    <div id="backto_button"><a class="select_mode" href="/run_query" style="width:110px; text-align:center">Back to<br>mode selection</a></div>
     <h1 class="success-title">Statistical analysis results</h1>
     <h6>Version used: <strong>{{ mode }}</strong> - Tuples considered: <strong>{{ num_rows }}</strong></h6>
 

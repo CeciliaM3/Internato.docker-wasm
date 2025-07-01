@@ -2,6 +2,7 @@
 
 import subprocess
 import re
+import os
 from flask import Flask, render_template, request, Response
 
 app = Flask(__name__)
@@ -27,14 +28,15 @@ def run_query_index():
         return render_template("choose_mode.html"), 200
 
 # template generico dell'url: /run_query/<containerized_or_noncontainerized>/<docker_or_podman>/<executable_or_wasm>/<node_or_bun>
-# tutte le possibili combinazioni attuali (alcune non ancora sviluppate):
+# combinazioni attualmente funzionanti:
+
 # /run_query/containerized/docker/wasm/node
 # /run_query/containerized/docker/wasm/bun
 # /run_query/containerized/docker/executable
 
-# /run_query/noncontainerized/executable
-# /run_query/noncontainerized/wasm/bun
 # /run_query/noncontainerized/wasm/node
+# /run_query/noncontainerized/wasm/bun
+# /run_query/noncontainerized/executable
 @app.get(
     "/run_query/<path:urlparams>",
     strict_slashes=False,
@@ -53,6 +55,8 @@ def run_query(urlparams):
         num_rows = request.args.get("rows", default=10, type=int)
         if num_rows < 1:
             return return_error_rightformat(response_mode, "The number of rows must be a positive integer.", 400)
+        if num_rows > 1516949:
+            num_rows = 1516949
         
         # Estrazione dall'url dei parametri necessari a determinare il comando da eseguire 
         command = ""
@@ -66,9 +70,11 @@ def run_query(urlparams):
                 if executable_or_wasm == 'wasm':
                     node_or_bun = url_components[3]
                     if node_or_bun == 'node': 
-                        return return_error_rightformat(response_mode, "Mode not yet available.", 503)
+                        command = ["docker", "run", "--rm", "statistics_calc_wasm_node", str(num_rows)]
+                        execution_mode = "program compiled to wasm with emcc and run in node runtime in a Docker container"
                     elif node_or_bun == 'bun':
-                        return return_error_rightformat(response_mode, "Mode not yet available.", 503)
+                        command = ["docker", "run", "--rm", "statistics_calc_wasm_bun", str(num_rows)]
+                        execution_mode = "program compiled to wasm with emcc and run in bun runtime in a Docker container"
                     else: 
                         return return_error_rightformat(response_mode, "Invalid url for this service.", 400)
                 elif executable_or_wasm == 'executable':
@@ -85,13 +91,16 @@ def run_query(urlparams):
             if executable_or_wasm == 'wasm':
                 node_or_bun = url_components[2]
                 if node_or_bun == 'node': 
-                    return return_error_rightformat(response_mode, "Mode not yet available.", 503)
+                    command = ["node", "../src_fetch/statistics_calc_fetch.js", str(num_rows)]
+                    execution_mode = "program compiled to wasm with emcc and run directly on wsl in node runtime"
                 elif node_or_bun == 'bun':
-                    return return_error_rightformat(response_mode, "Mode not yet available.", 503)
+                    bunpath = os.path.join(os.path.expanduser("~"), ".bun", "bin", "bun")
+                    command = [bunpath, "../src_fetch/statistics_calc_fetch.js", str(num_rows)]
+                    execution_mode = "program compiled to wasm with emcc and run directly on wsl in bun runtime"
                 else: 
                     return return_error_rightformat(response_mode, "Invalid url for this service.", 400)
             elif executable_or_wasm == 'executable':
-                command = ["../statistics_calc_libcurl", str(num_rows)]
+                command = ["../src_libcurl/statistics_calc_libcurl", str(num_rows)]
                 execution_mode = "program compiled to native executable with g++ and run directly on wsl"
             else:   
                 return return_error_rightformat(response_mode, "Invalid url for this service.", 400)
@@ -102,7 +111,7 @@ def run_query(urlparams):
         result = subprocess.run(command, capture_output=True, text=True)
         
         # Aggiunte print di debug
-        print(result.stdout)
+        # print(result.stdout)
         print(result.stderr)
 
         # Verifica della correttezza dell'esecuzione del comando
@@ -129,31 +138,13 @@ def run_query(urlparams):
     except Exception as e:
         return return_error_rightformat(response_mode, str(e), 500)
 
-@app.get("/currently_disabled_endpoint/", strict_slashes=False)
-def run_query_wasm():
-    try:
-        # TODO
-        # parte mancante
-        # Probaiblmente eliminerò questo endpoint perchè integrerò anche la parte di wasm nell'endpoint "dinamico" ed omnicomprensivo sopra definito
-        return Response("Currently disabled endpoint.\n", status=503, mimetype='text/plain')
-
-        # Determinazione del numero di righe (estrazione dalla query string della richiesta http get)
-        num_rows = request.args.get("rows", default=10, type=int)
-
-        # Al momento recupera solo le ultime X letture e le restituisce così come sono.
-        command = ["node", "../prova-fetch/fetch2.js", num_rows]
-        result = subprocess.run(command, capture_output=True, text=True)
-
-        # Verifica della correttezza dell'esecuzione del comando
-        if result.returncode != 0:
-            return jsonify({"error": "Errore nell'esecuzione del modulo WASM"}), 500
-
-        # Restituzione dei risultati al browser/chiamante
-        return jsonify({"output": result.stdout})
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
 if __name__ == "__main__":
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        print("\nUrls for available modes:\n")
+        print("/run_query/containerized/docker/wasm/node")
+        print("/run_query/containerized/docker/wasm/bun")
+        print("/run_query/containerized/docker/wasm/executable")
+        print("/run_query/noncontainerized/wasm/node")
+        print("/run_query/noncontainerized/wasm/bun")
+        print("/run_query/noncontainerized/executable\n")
     app.run(debug=True, host="0.0.0.0", port=5000)

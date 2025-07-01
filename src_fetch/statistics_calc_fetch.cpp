@@ -40,26 +40,44 @@ vector<emscripten_fetch_t*> fetch_structs(4, nullptr);
 
 void callback_success(emscripten_fetch_t* fetch);
 void callback_failure(emscripten_fetch_t* fetch);
-void callback_timeout(void* arg);
+extern "C" void callback_timeout(const char* payload);
 void main_loop();
+
+EM_JS(int, set_timeout, (int delay_ms, const char* payload, int func_ptr), {
+    return setTimeout(function() {
+        dynCall('vi', func_ptr, [payload]);
+    }, delay_ms);
+});
+
+EM_JS(void, clear_timeout, (int id), {
+    clearTimeout(id);
+});
 
 int main(int argc, char* argv[]) {
 
-    if (argc != 2) {
-        cerr << "Use: " << argv[0] << " <number of tuples to consider>" << endl;
-        return 1;
+    int num_tuples; 
+    string host_addr = "localhost";
+
+    switch(argc) {
+        case 2: 
+            num_tuples = stoi(argv[1]);
+            break;
+        case 3:
+            num_tuples = stoi(argv[2]);
+            host_addr = argv[1];
+            break;
+        default:
+            cerr << "Use: " << argv[0] << " [<host_address>] <number of tuples to consider> " << endl;
+            return 1;
     }
 
-    num_tuples = stoi(argv[1]);
     if (num_tuples < 1) {
         cerr << "Error: number of tuples must be a positive integer." << endl;
         return 1;
     }
 
     // determinazione dell'indirizzo/nome a cui far riferimento per contattare la porta 8000 su cui è in ascolto il servizio fastAPI
-    const char* env_host_addr = getenv("HOST_ADDR");
-    string host_address =  env_host_addr ? env_host_addr : "localhost";
-    string url = "http://" + host_address + ":8000/query";
+    string url = "http://" + host_addr + ":8000/query";
 
     /*
     Obiettivi: calcolo di:
@@ -141,13 +159,13 @@ int main(int argc, char* argv[]) {
             for (auto& fetch : fetch_structs) {
                 if (fetch) {
                     RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
-                    emscripten_clear_timeout(ctx->timeout_id);
+                    clear_timeout(ctx->timeout_id);
                     emscripten_fetch_close(fetch);
                 }
             }
             return 1;
         }
-        request_contexts[i].timeout_id = emscripten_async_call(callback_timeout, &payloads[i], 120000);
+        request_contexts[i].timeout_id = set_timeout(120000, payloads[i].c_str(), (int)&callback_timeout);
     }
 
     emscripten_set_main_loop(main_loop, 0, 1);
@@ -160,7 +178,7 @@ void callback_success(emscripten_fetch_t *fetch) {
     }
 
     RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
-    emscripten_clear_timeout(ctx->timeout_id);
+    clear_timeout(ctx->timeout_id);
 
     string* JSON_buffer = nullptr;
     if(ctx->JSON_buffer && fetch->data && fetch->numBytes > 0) {
@@ -178,7 +196,7 @@ void callback_failure(emscripten_fetch_t *fetch) {
     }
 
     RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
-    emscripten_clear_timeout(ctx->timeout_id);
+    clear_timeout(ctx->timeout_id);
 
     cerr << "Request failed with status code: " << fetch->status << endl;
 
@@ -187,17 +205,17 @@ void callback_failure(emscripten_fetch_t *fetch) {
 }
 
 // funzione di callback attivata allo scadere di un timeout
-void callback_timeout(void* arg) {
+extern "C" void callback_timeout(const char* payload) {
     if (timeout_triggered) {
         return;
     }
 
-    cerr << "Timeout reached for request with payload: " << ctx->payload << endl << "Aborting program." << endl;
+    cerr << "Timeout reached for request with payload: " << payload << endl << "Aborting program." << endl;
     timeout_triggered = true;
     for (auto& fetch : fetch_structs) {
         if (fetch) {
             RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
-            emscripten_clear_timeout(ctx->timeout_id);
+            clear_timeout(ctx->timeout_id);
             emscripten_fetch_close(fetch);
         }
     }
@@ -355,7 +373,6 @@ void main_loop() {
 
         cout << endl << "Calculations performed considering " << num_tuples << " tuples." << endl;
 
-        emscripten_cancel_main_loop();  
-        emscripten_force_exit(0);      
+        emscripten_cancel_main_loop();
     }
 }

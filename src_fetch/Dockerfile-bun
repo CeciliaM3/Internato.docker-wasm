@@ -1,0 +1,20 @@
+FROM oven/bun:latest
+
+WORKDIR /app
+COPY statistics_calc_fetch.js .
+COPY statistics_calc_fetch.wasm .
+COPY package.json .
+COPY package-lock.json .
+
+RUN bun install
+
+ARG host_address_forenv=172.17.0.1
+ENV HOST_ADDR=${host_address_forenv}
+
+COPY wrapperstart.sh .
+
+RUN chmod +x wrapperstart.sh
+ENTRYPOINT ["./wrapperstart.sh", "bun"]
+
+# external/nlohmann/json.hpp: versione header-only della libreria precedentemente scaricata sull'host con:
+# wget https://github.com/nlohmann/json/releases/latest/download/json.hpp -O json.hpp

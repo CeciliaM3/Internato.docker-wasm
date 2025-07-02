@@ -1,15 +1,15 @@
 import os
 from typing import List
-from pydantic import BaseModel
-from pydantic import constr
+
 import mysql.connector
-from fastapi import FastAPI
-from fastapi import HTTPException
-from fastapi import Body
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, constr
+
 
 class SQLQuery(BaseModel):
     query: constr(strip_whitespace=True, min_length=1)
+
 
 app = FastAPI()
 
@@ -30,6 +30,7 @@ DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "password")
 DB_NAME = os.getenv("DB_NAME", "mydb")
 
+
 # Funzione per connettersi al database MySQL
 def get_db_connection():
     connection = mysql.connector.connect(
@@ -41,25 +42,29 @@ def get_db_connection():
     )
     return connection
 
-# Endpoint per eseguire la specifica query indicata nel body della ridchiesta http
+
+# Endpoint per eseguire la specifica query indicata nel body della richiesta http
 @app.post("/query", response_model=List[dict])
 def perform_query(payload: SQLQuery = Body(...)):
     upper_query = payload.query.strip().upper()
     if not (upper_query.startswith("SELECT") or upper_query.startswith("WITH")):
-        raise HTTPException(status_code=400, detail="Only SELECT statements are allowed.")
+        raise HTTPException(
+            status_code=400, detail="Only SELECT statements are allowed."
+        )
 
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    print("Running query:", upper_query)
 
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
         cursor.execute(payload.query)
         result = cursor.fetchall() if cursor.description else []
-                
         return JSONResponse(content=result)
-    
-    except mysql.connector.Error as e:
+    except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
     finally:
-        cursor.close()
-        conn.close()
+        try:
+            cursor.close()
+            conn.close()
+        except:
+            pass

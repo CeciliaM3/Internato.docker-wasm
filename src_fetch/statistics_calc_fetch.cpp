@@ -7,7 +7,7 @@
 #include <emscripten/fetch.h>
 #include <emscripten.h>
 #include <cstdio>
-#include "external/nlohmann/json.hpp"
+#include "json.hpp"
 using std::cout;
 using std::cerr;
 using std::endl;

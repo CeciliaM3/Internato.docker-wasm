@@ -5,7 +5,7 @@
 #include <cmath>
 #include <algorithm>
 #include <curl/curl.h>
-#include "external/nlohmann/json.hpp"
+#include "json.hpp"
 using std::cout;
 using std::cerr;
 using std::endl;

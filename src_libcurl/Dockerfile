@@ -1,12 +1,12 @@
 FROM ubuntu:latest
 
+# TODO: Verificare se funziona anche senza installare la libreria
 RUN apt-get update && \
-    apt-get install -y libcurl4-openssl-dev &&\
+    apt-get install -y libcurl4-openssl-dev && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY src_libcurl/statistics_calc_libcurl .
-COPY external/ external/
+COPY statistics_calc_libcurl .
 
 ARG host_address_forenv=172.17.0.1
 ENV HOST_ADDR=${host_address_forenv}

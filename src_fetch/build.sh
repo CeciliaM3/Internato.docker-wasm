@@ -1,16 +1,16 @@
 #!/bin/bash
 set -e
-cd "$(dirname "$0")"/../src_fetch
+cd "$(dirname "$0")"
 
-function emcc() {
-    docker run --rm -v "$PWD":/src -u "$(id -u)":"$(id -g)" emscripten/emsdk emcc "$@"
-}
+# Funzione da attivare se si vuole usare emcc da container
+# function emcc() {
+    # docker run --rm -v "$PWD":/src -u "$(id -u)":"$(id -g)" emscripten/emsdk emcc "$@"
+# }
 
 # Compilazione con emscripten
 emcc statistics_calc_fetch.cpp -o statistics_calc_fetch.js \
     -s WASM=1 -s FETCH=1 -s EXPORTED_FUNCTIONS="['_main', '_callback_timeout']" \
     -sALLOW_MEMORY_GROWTH \
-    -I..
 
 # Aggiunge XMLHttpRequest al file .js mediante la libreria xhr2
 # Le XMLHttpRequest vengono effettuate dal browser, non sono disponibili

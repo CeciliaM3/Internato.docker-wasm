@@ -55,12 +55,13 @@ def run_query_index():
 
 # /run_query/containerized/docker/wasm/node
 # /run_query/containerized/docker/wasm/bun
-# /run_query/containerized/docker/executable
-
-
-# /run_query/noncontainerized/wasm/node
-# /run_query/noncontainerized/wasm/bun
-# /run_query/noncontainerized/executable
+# /run_query/containerized/docker/executable/-
+# /run_query/containerized/podman/wasm/node
+# /run_query/containerized/podman/wasm/bun
+# /run_query/containerized/podman/executable/-
+# /run_query/noncontainerized/-/wasm/node
+# /run_query/noncontainerized/-/wasm/bun
+# /run_query/noncontainerized/-/executable/-
 @app.get(
     "/run_query/<path:urlparams>",
     strict_slashes=False,
@@ -88,61 +89,64 @@ def run_query(urlparams):
         # Estrazione dall'url dei parametri necessari a determinare il comando da eseguire
         command = ""
         execution_mode = ""
+        
+        # Controllo della validità dell'url e early exits
         url_components = urlparams.split("/")
         containerized_or_noncontainerized = url_components[0]
+        docker_or_podman = url_components[1]
+        executable_or_wasm = url_components[2]
+        node_or_bun = url_components[3]
+        if containerized_or_noncontainerized not in ["containerized", "noncontainerized"]:
+            return return_error_rightformat(
+                response_mode, "Invalid url for this service.", 400
+            )
+        if (containerized_or_noncontainerized == "containerized" and docker_or_podman not in ["docker", "podman"] or
+            containerized_or_noncontainerized == "noncontainerized" and docker_or_podman != "-"):
+            return return_error_rightformat(
+                response_mode, "Invalid url for this service.", 400
+            )
+        if executable_or_wasm not in ["executable", "wasm"]:
+            return return_error_rightformat(
+                response_mode, "Invalid url for this service.", 400
+            )
+        if (executable_or_wasm == "wasm" and node_or_bun not in ["node", "bun"] or
+            executable_or_wasm == "executable" and node_or_bun != "-"):
+            return return_error_rightformat(
+                response_mode, "Invalid url for this service.", 400
+            )
+            
+        # Esecuzione effettiva del comando richiesto
         if containerized_or_noncontainerized == "containerized":
-            docker_or_podman = url_components[1]
-            if docker_or_podman == "docker":
-                executable_or_wasm = url_components[2]
-                if executable_or_wasm == "wasm":
-                    node_or_bun = url_components[3]
-                    if node_or_bun == "node":
-                        command = [
-                            "docker",
-                            "run",
-                            "--rm",
-                            "statistics_calc_wasm_node",
-                            str(num_rows),
-                        ]
-                        execution_mode = "program compiled to wasm with emcc and run in node runtime in a Docker container"
-                    elif node_or_bun == "bun":
-                        command = [
-                            "docker",
-                            "run",
-                            "--rm",
-                            "statistics_calc_wasm_bun",
-                            str(num_rows),
-                        ]
-                        execution_mode = "program compiled to wasm with emcc and run in bun runtime in a Docker container"
-                    else:
-                        return return_error_rightformat(
-                            response_mode, "Invalid url for this service.", 400
-                        )
-                elif executable_or_wasm == "executable":
+            if executable_or_wasm == "wasm":
+                if node_or_bun == "node":
                     command = [
-                        "docker",
+                        docker_or_podman,
                         "run",
                         "--rm",
-                        "statistics_calc_executable",
+                        "statistics_calc_wasm_node",
                         str(num_rows),
                     ]
-                    execution_mode = "program compiled to native executable with g++ and run in a Docker container"
-                else:
-                    return return_error_rightformat(
-                        response_mode, "Invalid url for this service.", 400
-                    )
-            elif docker_or_podman == "podman":
-                return return_error_rightformat(
-                    response_mode, "Modes not yet available.", 503
-                )
-            else:
-                return return_error_rightformat(
-                    response_mode, "Invalid url for this service.", 400
-                )
+                    execution_mode = f"program compiled to wasm with emcc and run in node runtime in a {docker_or_podman.capitalize()} container"
+                elif node_or_bun == "bun":
+                    command = [
+                        docker_or_podman,
+                        "run",
+                        "--rm",
+                        "statistics_calc_wasm_bun",
+                        str(num_rows),
+                    ]
+                    execution_mode = f"program compiled to wasm with emcc and run in bun runtime in a {docker_or_podman.capitalize()} container"
+            elif executable_or_wasm == "executable":
+                command = [
+                    docker_or_podman,
+                    "run",
+                    "--rm",
+                    "statistics_calc_executable",
+                    str(num_rows),
+                ]
+                execution_mode = f"program compiled to native executable with g++ and run in a {docker_or_podman.capitalize()} container"
         elif containerized_or_noncontainerized == "noncontainerized":
-            executable_or_wasm = url_components[1]
             if executable_or_wasm == "wasm":
-                node_or_bun = url_components[2]
                 if node_or_bun == "node":
                     command = [
                         "node",
@@ -160,21 +164,9 @@ def run_query(urlparams):
                         str(num_rows),
                     ]
                     execution_mode = "program compiled to wasm with emcc and run directly on wsl in bun runtime"
-                else:
-                    return return_error_rightformat(
-                        response_mode, "Invalid url for this service.", 400
-                    )
             elif executable_or_wasm == "executable":
                 command = ["../src_libcurl/statistics_calc_libcurl", str(num_rows)]
-                execution_mode = "program compiled to native executable with g++ and run directly on wsl"
-            else:
-                return return_error_rightformat(
-                    response_mode, "Invalid url for this service.", 400
-                )
-        else:
-            return return_error_rightformat(
-                response_mode, "Invalid url for this service.", 400
-            )
+                execution_mode = "program compiled to native executable with g++ and run directly on wsl"     
 
         # Esecuzione del comando richiesto e cattura dell'output
         result = subprocess.run(command, capture_output=True, text=True)
@@ -243,8 +235,11 @@ if __name__ == "__main__":
         print("\nUrls for available modes:\n")
         print("/run_query/containerized/docker/wasm/node")
         print("/run_query/containerized/docker/wasm/bun")
-        print("/run_query/containerized/docker/executable")
-        print("/run_query/noncontainerized/wasm/node")
-        print("/run_query/noncontainerized/wasm/bun")
-        print("/run_query/noncontainerized/executable\n")
+        print("/run_query/containerized/docker/executable/-")
+        print("/run_query/containerized/podman/wasm/node")
+        print("/run_query/containerized/podman/wasm/bun")
+        print("/run_query/containerized/podman/executable/-")
+        print("/run_query/noncontainerized/-/wasm/node")
+        print("/run_query/noncontainerized/-/wasm/bun")
+        print("/run_query/noncontainerized/-/executable/-\n")
     app.run(debug=True, host="0.0.0.0", port=5000)

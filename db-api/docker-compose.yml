@@ -25,4 +25,4 @@ services:
       - ./mysql/aircompressor_cleaned.csv:/var/lib/mysql-files/aircompressor_cleaned.csv
     environment:
       - MYSQL_ROOT_PASSWORD=password
-    command: mysqld --max-allowed-packet=1G --innodb_redo_log_capacity=1073741824
+    command: mysqld --max-allowed-packet=1G --innodb_redo_log_capacity=1073741824 --innodb_buffer_pool_size=512M

@@ -1,3 +1,7 @@
+#!/bin/bash
+
+set -euo pipefail
+
 source "$(dirname "$0")/all-docker-podman-destroy.sh"
 
 # ricompilazione del file da C++ ad eseguibile
@@ -8,7 +12,8 @@ printf "Compiling statistics_calc_libcurl.cpp to executable using g++.\n\n"
 printf "Compiling statistics_calc_fetch.cpp to wasm + glue code JS using emcc.\n\n"
 ./src_fetch/build.sh
 
-# determinazione dell'argomento da passare in fase di build per settare la variabile d'ambiente interna ai container HOST_ADDR
+# determinazione dell'argomento da passare in fase di build per settare
+# la variabile d'ambiente interna ai container HOST_ADDR
 if [ -r /proc/sys/kernel/osrelease ] && grep -qi microsoft /proc/sys/kernel/osrelease; then
   echo "Detected WSL2"
   host_address_forbuild="host.docker.internal"

@@ -1,16 +1,23 @@
 #!/bin/bash
-set -e
+
+set -euo pipefail
+
 cd "$(dirname "$0")"
 
 # Funzione da attivare se si vuole usare emcc da container
-# function emcc() {
-    # docker run --rm -v "$PWD":/src -u "$(id -u)":"$(id -g)" emscripten/emsdk emcc "$@"
-# }
+if [ ! "$(which emcc)" ]; then
+    echo "Comando emcc non trovato, lo eseguo con Docker"
+    function emcc() {
+        docker run --rm -v "$PWD":/src -u "$(id -u)":"$(id -g)" emscripten/emsdk emcc "$@"
+    }
+fi
 
 # Compilazione con emscripten
 emcc statistics_calc_fetch.cpp -o statistics_calc_fetch.js \
-    -s WASM=1 -s FETCH=1 -s EXPORTED_FUNCTIONS="['_main', '_callback_timeout']" \
-    -sALLOW_MEMORY_GROWTH \
+    -s WASM=1 \
+    -s FETCH=1 \
+    -s EXPORTED_FUNCTIONS="['_main', '_callback_timeout']" \
+    -s ALLOW_MEMORY_GROWTH
 
 # Aggiunge XMLHttpRequest al file .js mediante la libreria xhr2
 # Le XMLHttpRequest vengono effettuate dal browser, non sono disponibili

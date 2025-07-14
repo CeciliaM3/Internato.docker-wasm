@@ -50,8 +50,10 @@ def run_query_index():
         return render_template("choose_mode.html"), 200
 
 
-# template generico dell'url: /run_query/<containerized_or_noncontainerized>/<docker_or_podman>/<executable_or_wasm>/<node_or_bun>
+# template generico dell'url:
+# /run_query/<containerized_or_noncontainerized>/<docker_or_podman>/<executable_or_wasm>/<node_or_bun>
 # combinazioni attualmente funzionanti:
+
 
 # /run_query/containerized/docker/wasm/node
 # /run_query/containerized/docker/wasm/bun
@@ -72,7 +74,7 @@ def run_query(urlparams):
         # rendering di pagina html o come plain text (scelto per dare maggiore leggibilità per curl)
         user_agent = request.headers.get("User-Agent", "").lower()
         response_mode = ""
-        if "curl" in user_agent or user_agent == "":
+        if not user_agent or "curl" in user_agent:
             response_mode = "text"
         else:
             response_mode = "html"
@@ -89,19 +91,26 @@ def run_query(urlparams):
         # Estrazione dall'url dei parametri necessari a determinare il comando da eseguire
         command = ""
         execution_mode = ""
-        
+
         # Controllo della validità dell'url e early exits
         url_components = urlparams.split("/")
         containerized_or_noncontainerized = url_components[0]
         docker_or_podman = url_components[1]
         executable_or_wasm = url_components[2]
         node_or_bun = url_components[3]
-        if containerized_or_noncontainerized not in ["containerized", "noncontainerized"]:
+        if containerized_or_noncontainerized not in [
+            "containerized",
+            "noncontainerized",
+        ]:
             return return_error_rightformat(
                 response_mode, "Invalid url for this service.", 400
             )
-        if (containerized_or_noncontainerized == "containerized" and docker_or_podman not in ["docker", "podman"] or
-            containerized_or_noncontainerized == "noncontainerized" and docker_or_podman != "-"):
+        if (
+            containerized_or_noncontainerized == "containerized"
+            and docker_or_podman not in ["docker", "podman"]
+            or containerized_or_noncontainerized == "noncontainerized"
+            and docker_or_podman != "-"
+        ):
             return return_error_rightformat(
                 response_mode, "Invalid url for this service.", 400
             )
@@ -109,12 +118,16 @@ def run_query(urlparams):
             return return_error_rightformat(
                 response_mode, "Invalid url for this service.", 400
             )
-        if (executable_or_wasm == "wasm" and node_or_bun not in ["node", "bun"] or
-            executable_or_wasm == "executable" and node_or_bun != "-"):
+        if (
+            executable_or_wasm == "wasm"
+            and node_or_bun not in ["node", "bun"]
+            or executable_or_wasm == "executable"
+            and node_or_bun != "-"
+        ):
             return return_error_rightformat(
                 response_mode, "Invalid url for this service.", 400
             )
-            
+
         # Esecuzione effettiva del comando richiesto
         if containerized_or_noncontainerized == "containerized":
             if executable_or_wasm == "wasm":
@@ -166,7 +179,7 @@ def run_query(urlparams):
                     execution_mode = "program compiled to wasm with emcc and run directly on wsl in bun runtime"
             elif executable_or_wasm == "executable":
                 command = ["../src_libcurl/statistics_calc_libcurl", str(num_rows)]
-                execution_mode = "program compiled to native executable with g++ and run directly on wsl"     
+                execution_mode = "program compiled to native executable with g++ and run directly on wsl"
 
         # Esecuzione del comando richiesto e cattura dell'output
         result = subprocess.run(command, capture_output=True, text=True)
@@ -187,7 +200,8 @@ def run_query(urlparams):
         if response_mode == "html":
             raw_result = result.stdout
 
-            # Estrazione dei dati in strutture più piccole e mirate per poter presentare i risultati anche all'interno di una tabella in maniera ordinata
+            # Estrazione dei dati in strutture più piccole e mirate per poter presentare i risultati
+            # anche all'interno di una tabella in maniera ordinata
             dividing_basedonsectiontitle_pattern = (
                 r"### (.*?) ###\s*([\s\S]*?)(?=###|$)"
             )

@@ -1,5 +1,7 @@
 #!/bin/bash
+
 set -euo pipefail
+
 cd "$(dirname "$0")/../db-api"
 
 docker compose down -v
@@ -19,4 +21,3 @@ docker builder prune --all -f
 docker compose build --no-cache
 
 printf "\nDocker compose completely reset for db-api. Ready to restart.\n\n"
-

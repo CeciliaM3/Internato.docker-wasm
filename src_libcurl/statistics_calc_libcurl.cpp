@@ -4,6 +4,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <chrono>
 #include <curl/curl.h>
 #include "json.hpp"
 using std::cout;
@@ -24,12 +25,16 @@ using std::abs;
 using std::transform;
 using std::getenv;
 using nlohmann::json;
+using namespace std::chrono;
 
 string url;
 size_t callback(char* ptr, size_t size, size_t nmemb, void* userdata);
 CURL* addQuery(const string& payload, CURLM* multi_handle, void* buffer, struct curl_slist* headers);
 
 int main(int argc, char* argv[]) {
+
+    // inizio della misurazione del tempo impiegato per l'esecuzione di tutto il programma
+    auto start_time = high_resolution_clock::now();
 
     if (argc != 2) {
         cerr << "Use: " << argv[0] << " <number of tuples to consider>" << endl;
@@ -316,6 +321,12 @@ int main(int argc, char* argv[]) {
 
     curl_global_cleanup();
     cout << endl << "Calculations performed considering " << num_tuples << " tuples." << endl;
+
+    // termine della misurazione del tempo impiegato per l'esecuzione di tutto il programma e calcolo del risultato
+    auto end_time = high_resolution_clock::now();
+    duration<double, std::milli> execution_duration = end_time - start_time;
+
+    cout << endl << "Execution time for the full C++ program (measured from within): " << execution_duration.count() << " milliseconds" << endl;
 
     return 0;
 }

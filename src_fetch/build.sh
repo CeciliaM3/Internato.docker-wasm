@@ -23,10 +23,25 @@ emcc statistics_calc_fetch.cpp -o statistics_calc_fetch.js \
 # Le XMLHttpRequest vengono effettuate dal browser, non sono disponibili
 # in runtime JavaScript come Node o Bun --> usiamo la libreria xhr2 per
 # poterle effettuare anche da Node o Bun
+#
+# Aggiunge le istruzioni necessarie a misurare il tempo di esecuzione
+# dell'intero processo javascript.
 
-echo "// Aggiunto dopo aver installato xhr2 con npm:
+echo "// Inizio della misurazione del tempo di esecuzione
+let start_time_js = performance.now();
+
+// Callback per determinare il termine della misurazione del tempo di esecuzione
+process.on('exit', () => {
+    let end_time_js = performance.now();
+    let execution_diration_js = (end_time_js - start_time_js).toFixed(3);
+    console.log('Execution time for the full Javascript glue code, including the wasm module: ', execution_diration_js, ' milliseconds');
+});
+
+// Aggiunto dopo aver installato xhr2 con npm:
 // npm i xhr2
 // Permette di eseguire il file con node o bun --> Non serve un browser
 var XMLHttpRequest = require('xhr2');
 
 $(cat statistics_calc_fetch.js)" > statistics_calc_fetch.js
+
+

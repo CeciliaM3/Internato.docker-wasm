@@ -4,6 +4,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <chrono>
 #include <emscripten/fetch.h>
 #include <emscripten.h>
 #include <cstdio>
@@ -26,6 +27,7 @@ using std::abs;
 using std::transform;
 using std::atomic;
 using nlohmann::json;
+using namespace std::chrono;
 
 struct RequestContext {
     int timeout_id;
@@ -37,6 +39,7 @@ atomic<int> completed_requests = 0;
 atomic<bool> timeout_triggered = false; 
 vector<string> JSON_buffers(4);
 vector<emscripten_fetch_t*> fetch_structs(4, nullptr);
+time_point<high_resolution_clock>start_time;
 
 void callback_success(emscripten_fetch_t* fetch);
 void callback_failure(emscripten_fetch_t* fetch);
@@ -55,7 +58,9 @@ EM_JS(void, clear_timeout, (int id), {
 
 int main(int argc, char* argv[]) {
 
-    int num_tuples; 
+    // inizio della misurazione del tempo impiegato per l'esecuzione di tutto il programma
+    start_time = high_resolution_clock::now();
+
     string host_addr = "localhost";
 
     switch(argc) {
@@ -372,6 +377,12 @@ void main_loop() {
         }
 
         cout << endl << "Calculations performed considering " << num_tuples << " tuples." << endl;
+
+        // termine della misurazione del tempo impiegato per l'esecuzione di tutto il programma e calcolo del risultato
+        auto end_time = high_resolution_clock::now();
+        duration<double, std::milli> execution_duration = end_time - start_time;
+
+        cout << endl << "Execution time for the full C++ program (measured from within): " << execution_duration.count() << " milliseconds" << endl;
 
         emscripten_cancel_main_loop();
     }

@@ -1,6 +1,8 @@
 **/venv
 **/__pycache__
 .vscode/
+
+# DB
 import-in-mysql.sql
 db-api/mysql/aircompressor_cleaned.csv
 

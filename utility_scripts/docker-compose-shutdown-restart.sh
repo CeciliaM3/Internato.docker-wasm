@@ -1,6 +1,9 @@
 #!/bin/bash
 
-source "$(dirname "$0")/docker-compose-shutdown.sh"
+set -euo pipefail
 
-clear
-docker compose up
+cd "$(dirname "$0")/../db-api"
+
+docker compose down --volumes
+
+docker compose up --build --force-recreate

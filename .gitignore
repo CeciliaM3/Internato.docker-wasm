@@ -3,3 +3,8 @@
 .vscode/
 import-in-mysql.sql
 db-api/mysql/aircompressor_cleaned.csv
+
+# File compilati
+src_fetch/statistics_calc_fetch.js
+src_fetch/statistics_calc_fetch.wasm
+src_libcurl/statistics_calc_libcurl

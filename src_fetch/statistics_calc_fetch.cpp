@@ -39,7 +39,7 @@ atomic<int> completed_requests = 0;
 atomic<bool> timeout_triggered = false; 
 vector<string> JSON_buffers(4);
 vector<emscripten_fetch_t*> fetch_structs(4, nullptr);
-time_point<high_resolution_clock>start_time;
+time_point<high_resolution_clock> start_time;
 
 void callback_success(emscripten_fetch_t* fetch);
 void callback_failure(emscripten_fetch_t* fetch);

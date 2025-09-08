@@ -1,0 +1,6 @@
+FROM docker.io/wasmedge/slim-runtime:0.10.1
+
+WORKDIR /app
+COPY statistics_calc_sqlite.wasm .
+
+ENTRYPOINT ["wasmedge", "--dir", "db:db", "/app/statistics_calc_sqlite.wasm"]

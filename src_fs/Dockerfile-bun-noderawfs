@@ -1,0 +1,7 @@
+FROM docker.io/oven/bun:latest
+
+WORKDIR /app
+COPY statistics_calc_sqlite_noderawfs.js .
+COPY statistics_calc_sqlite_noderawfs.wasm .
+
+ENTRYPOINT ["bun", "statistics_calc_sqlite_noderawfs.js"]

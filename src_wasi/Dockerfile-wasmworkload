@@ -1,0 +1,5 @@
+FROM scratch
+
+COPY statistics_calc_sqlite.wasm /statistics_calc_sqlite.wasm
+
+ENTRYPOINT ["/statistics_calc_sqlite.wasm"]

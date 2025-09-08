@@ -1,6 +1,5 @@
 FROM ubuntu:latest
 
-# TODO: Verificare se funziona anche senza installare la libreria
 RUN apt-get update && \
     apt-get install -y libcurl4-openssl-dev && \
     rm -rf /var/lib/apt/lists/*

@@ -1,0 +1,7 @@
+FROM node:latest
+
+WORKDIR /app
+COPY statistics_calc_sqlite_noderawfs.js .
+COPY statistics_calc_sqlite_noderawfs.wasm .
+
+ENTRYPOINT ["node", "statistics_calc_sqlite_noderawfs.js"]

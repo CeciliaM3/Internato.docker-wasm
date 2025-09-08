@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 if [ ! "$(which tmux)" ]; then
-    echo "Installa tmux e riprova."
+    echo "Install tmux and try again."
     exit 1
 fi
 

@@ -18,7 +18,7 @@
         <p class="try-again">Try another request</p>
       </a>
     {% else %}
-    <div id="backto_button"><a class="select_mode" href="/run_query" style="width:110px; text-align:center">Back to<br>mode selection</a></div>
+    <a id="backto_button" href="/run_query" style="width:110px; text-align:center">Back to<br>mode selection</a></div>
     <h1 class="success-title">Statistical analysis results</h1>
     <h6>Version used: <strong>{{ mode }}</strong> - Tuples considered: <strong>{{ num_rows }}</strong></h6>
 
@@ -117,7 +117,7 @@
         </div>
       </pre>
       <div class="performance">
-          Performance details will be specified here...
+          Elapsed time for subprocess.run: <strong>{{ subprocess_time }}</strong> milliseconds
       </div>
     </div>
 

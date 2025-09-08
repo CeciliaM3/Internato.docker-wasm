@@ -1,0 +1,2 @@
+configuration,tuples,mean,stddev,min,max
+bun statistics_calc_sqlite_noderawfs.js,100,0.17462285338,0.0020067474890917993,0.17164622568000001,0.17756338368000002

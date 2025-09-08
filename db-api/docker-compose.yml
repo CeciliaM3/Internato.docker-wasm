@@ -21,8 +21,8 @@ services:
     image: mysql
     container_name: mysql-container
     volumes:
-      - ./mysql/import-in-mysql-full.sql:/docker-entrypoint-initdb.d/import-data.sql
-      - ./mysql/aircompressor_cleaned.csv:/var/lib/mysql-files/aircompressor_cleaned.csv
+      - ./database/import-in-mysql-full.sql:/docker-entrypoint-initdb.d/import-data.sql
+      - ./database/aircompressor_cleaned.csv:/var/lib/mysql-files/aircompressor_cleaned.csv
     environment:
       - MYSQL_ROOT_PASSWORD=password
     command: mysqld --max-allowed-packet=1G --innodb_redo_log_capacity=1073741824 --innodb_buffer_pool_size=512M

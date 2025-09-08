@@ -1,0 +1,17 @@
+FROM ubuntu:24.04
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends xz-utils && \
+    rm -rf /var/lib/apt/lists/*
+
+ARG WASMTIME_VERSION=34.0.2
+ADD https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz /tmp/wasmtime.tar.xz
+
+RUN tar -xJf /tmp/wasmtime.tar.xz -C /usr/local && \
+    ln -s /usr/local/wasmtime-v${WASMTIME_VERSION}-x86_64-linux/wasmtime /usr/local/bin/wasmtime && \
+    rm /tmp/wasmtime.tar.xz
+
+WORKDIR /app
+COPY statistics_calc_sqlite.wasm .
+
+ENTRYPOINT ["wasmtime", "--dir", "db", "/app/statistics_calc_sqlite.wasm"]

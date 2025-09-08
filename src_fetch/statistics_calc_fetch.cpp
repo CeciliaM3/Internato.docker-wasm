@@ -4,6 +4,8 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <numeric>
+#include <limits>
 #include <chrono>
 #include <emscripten/fetch.h>
 #include <emscripten.h>
@@ -21,8 +23,8 @@ using std::replace;
 using std::find;
 using std::stoi;
 using std::stod;
-using std::nan;
 using std::isnan;
+using std::numeric_limits;
 using std::abs;
 using std::transform;
 using std::atomic;
@@ -37,8 +39,8 @@ struct RequestContext {
 int num_tuples;
 atomic<int> completed_requests = 0; 
 atomic<bool> timeout_triggered = false; 
-vector<string> JSON_buffers(4);
-vector<emscripten_fetch_t*> fetch_structs(4, nullptr);
+string JSON_buffer;
+emscripten_fetch_t* fetch_struct;
 time_point<high_resolution_clock> start_time;
 
 void callback_success(emscripten_fetch_t* fetch);
@@ -80,6 +82,9 @@ int main(int argc, char* argv[]) {
         cerr << "Error: number of tuples must be a positive integer." << endl;
         return 1;
     }
+    if (num_tuples > 1516949) {
+        num_tuples = 1516949;
+    }
 
     // determinazione dell'indirizzo/nome a cui far riferimento per contattare la porta 8000 su cui è in ascolto il servizio fastAPI
     string url = "http://" + host_addr + ":8000/query";
@@ -93,45 +98,16 @@ int main(int argc, char* argv[]) {
     5) Identificazione ed elenco delle anomalie (valori al di fuori del ranga media +/- 3*stddev) per TP2, TP3, H1, CV_pressure, Reservoirs e Oil_temperature
     */
 
-    // DEFINIZIONI DELLE QUERIES
-    // Stringa per la limitazione delle tuple considerate al valore richiesto e query di base per ridimensionare di conseguenza il set di dati su cui opereranno le altre query
-    string limit_clause = " LIMIT " + to_string(num_tuples);
-    string sql_data_limited = "SELECT timestamp, TP2, TP3, H1, DV_pressure, Reservoirs, Oil_temperature, Oil_level FROM aircompressor_data" + limit_clause;
+    // DEFINIZIONE DELLA QUERY PER PRELEVARE IL NUMERO RICHIESTO DI TUPLE
+    string sql_query = "SELECT TP2, TP3, H1, DV_pressure, Reservoirs, Oil_temperature, Oil_level FROM aircompressor_data LIMIT " + to_string(num_tuples);
 
-    // preparazione delle variabili per trasformare le query in payloads pronti per essere trasmessi come corpo di una richiesta http
-    vector<string> payloads;
+    // preparazione della variabile per trasformare le query in payload pronto per essere trasmesso come corpo di una richiesta http
     json body;
+    body["query"] = sql_query;
+    string payload = body.dump();
 
-    // 1. 
-    string sql_reservois_TP3_diff = 
-    "SELECT AVG(Reservoirs - TP3) AS avg_diff, "
-    "MAX(Reservoirs - TP3) AS max_diff, "
-    "MIN(Reservoirs - TP3) AS min_diff "
-    "FROM (" + sql_data_limited + ") AS limited_data;";
-    body["query"] = sql_reservois_TP3_diff;
-    payloads.push_back(body.dump());
-
-    // 2. 
-    string sql_oillevel_activation = 
-    "WITH limited_data AS (" + sql_data_limited + ") "
-    "SELECT CAST(100.0 * ("
-        "(SELECT COUNT(Oil_level) FROM limited_data WHERE Oil_level = 1.0) * 1.0/"
-        "(SELECT COUNT(Oil_level) FROM limited_data)) AS DOUBLE) AS oillevel_activation_percentage;";
-    body["query"] = sql_oillevel_activation;
-    payloads.push_back(body.dump());
-
-    // 3/4/5.
-    string sql_data = "SELECT TP2, TP3, H1, DV_pressure, Reservoirs, Oil_temperature FROM aircompressor_data" + limit_clause + ";";
-    body["query"] = sql_data;
-    payloads.push_back(body.dump());
-
-    string sql_means = "SELECT AVG(TP2), AVG(TP3), AVG(H1), AVG(DV_pressure), AVG(Reservoirs), AVG(Oil_temperature) FROM (" + sql_data_limited + ") AS limited_data;";
-    body["query"] = sql_means;
-    payloads.push_back(body.dump());
-
-
-    // ESECUZIONE DELLE QUERIES tramite richiesta http ad app.py con fastAPI, che si interfaccia poi con il database server MySQL
-    // Inizializzazione delle strutture necessarie ad eseguire le richieste http tramite l'API fetch di emscripten e impostazione delle configurazioni adeguate
+    // ESECUZIONE DELLA QUERY tramite richiesta http ad app.py con fastAPI, che si interfaccia poi con il database server MySQL
+    // Inizializzazione delle strutture necessarie ad eseguire la richiesta http tramite l'API fetch di emscripten e impostazione delle configurazioni adeguate
     emscripten_fetch_attr_t fetch_attr;
     emscripten_fetch_attr_init(&fetch_attr);
 
@@ -149,29 +125,20 @@ int main(int argc, char* argv[]) {
     fetch_attr.onerror = callback_failure;
 
     // Chiamate asincrone
-    vector<RequestContext> request_contexts(4);
-    for (int i = 0; i < 4; i++) {
-        fetch_attr.requestData = payloads[i].c_str();
-        fetch_attr.requestDataSize = payloads[i].size();
-        
-        request_contexts[i].JSON_buffer = &JSON_buffers[i];
-        fetch_attr.userData = &request_contexts[i];
+    RequestContext request_context;
+    fetch_attr.requestData = payload.c_str();
+    fetch_attr.requestDataSize = payload.size();
+    
+    request_context.JSON_buffer = &JSON_buffer;
+    fetch_attr.userData = &request_context;
 
-        fetch_structs[i] = emscripten_fetch(&fetch_attr, url.c_str());
-        
-        if(!fetch_structs[i]) {
-            cerr << "emscripten_fetch() failed for request with payload: " << payloads[i] << endl;
-            for (auto& fetch : fetch_structs) {
-                if (fetch) {
-                    RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
-                    clear_timeout(ctx->timeout_id);
-                    emscripten_fetch_close(fetch);
-                }
-            }
-            return 1;
-        }
-        request_contexts[i].timeout_id = set_timeout(120000, payloads[i].c_str(), (int)&callback_timeout);
+    fetch_struct = emscripten_fetch(&fetch_attr, url.c_str());
+    
+    if(!fetch_struct) {
+        cerr << "emscripten_fetch() failed." << endl;
+        return 1;
     }
+    request_context.timeout_id = set_timeout(120000, payload.c_str(), (int)&callback_timeout);
 
     emscripten_set_main_loop(main_loop, 0, 1);
 }
@@ -194,7 +161,7 @@ void callback_success(emscripten_fetch_t *fetch) {
     emscripten_fetch_close(fetch);
 }
 
-// funzione chiamata in caso di fallimento di una richiesta
+// funzione chiamata in caso di fallimento della richiesta
 void callback_failure(emscripten_fetch_t *fetch) {
     if (timeout_triggered) {
         return;
@@ -209,20 +176,18 @@ void callback_failure(emscripten_fetch_t *fetch) {
     emscripten_fetch_close(fetch);
 }
 
-// funzione di callback attivata allo scadere di un timeout
+// funzione di callback attivata allo scadere del timeout
 extern "C" void callback_timeout(const char* payload) {
     if (timeout_triggered) {
         return;
     }
 
-    cerr << "Timeout reached for request with payload: " << payload << endl << "Aborting program." << endl;
+    cerr << "Timeout reached for the HTTP request. Aborting program." << endl;
     timeout_triggered = true;
-    for (auto& fetch : fetch_structs) {
-        if (fetch) {
-            RequestContext* ctx = static_cast<RequestContext*>(fetch->userData);
-            clear_timeout(ctx->timeout_id);
-            emscripten_fetch_close(fetch);
-        }
+    if (fetch_struct) {
+        RequestContext* ctx = static_cast<RequestContext*>(fetch_struct->userData);
+        clear_timeout(ctx->timeout_id);
+        emscripten_fetch_close(fetch_struct);
     }
     emscripten_cancel_main_loop();  
     emscripten_force_exit(1);  
@@ -234,49 +199,28 @@ void main_loop() {
     }
 
     // sezione di computazioni da svolgere una volta ricevute tutte e 4 le risposte
-    if (completed_requests >= 4) {
+    if (completed_requests >= 1) {
         // dichiarazione dei buffer per il salvataggio dei risultati delle query 
         // (sia come stringhe per accogliere inizialmente i dati in formato JSON, sia come buffer dei giusti tipi di dati per poterli usare nelle computazioni successive)
-        array<double, 3> extracted_reservoisTP3diff;
-        double extracted_oillevelactivation;
         vector<array<double, 6>> extracted_data;
-        array<double, 6> extracted_means;
+        vector<double> oilactivation_column;
         
         // parsing delle risposte JSON
         json parsed_data;
 
         try {
-            // 1a query
-            parsed_data = json::parse(JSON_buffers[0]);
-            extracted_reservoisTP3diff[0] = abs(parsed_data[0]["avg_diff"].get<double>());
-            extracted_reservoisTP3diff[1] = abs(parsed_data[0]["max_diff"].get<double>());
-            extracted_reservoisTP3diff[2] = abs(parsed_data[0]["min_diff"].get<double>());
-
-            // 2a query
-            parsed_data = json::parse(JSON_buffers[1]);
-            extracted_oillevelactivation = parsed_data[0]["oillevel_activation_percentage"].get<double>();
-
-            // 3a query
-            parsed_data = json::parse(JSON_buffers[2]);
+            parsed_data = json::parse(JSON_buffer);
             for (const auto& row : parsed_data) {
                 array<double, 6> parsed_row;
-                parsed_row[0] = row["TP2"].get<double>();
-                parsed_row[1] = row["TP3"].get<double>();
-                parsed_row[2] = row["H1"].get<double>();
-                parsed_row[3] = row["DV_pressure"].get<double>();
-                parsed_row[4] = row["Reservoirs"].get<double>();
-                parsed_row[5] = row["Oil_temperature"].get<double>();
+                parsed_row[0] = row["TP2"].is_null() ? numeric_limits<double>::quiet_NaN() : row["TP2"].get<double>();
+                parsed_row[1] = row["TP3"].is_null() ? numeric_limits<double>::quiet_NaN() : row["TP3"].get<double>(); 
+                parsed_row[2] = row["H1"].is_null() ? numeric_limits<double>::quiet_NaN() : row["H1"].get<double>(); 
+                parsed_row[3] = row["DV_pressure"].is_null() ? numeric_limits<double>::quiet_NaN() : row["DV_pressure"].get<double>(); 
+                parsed_row[4] = row["Reservoirs"].is_null() ? numeric_limits<double>::quiet_NaN() : row["Reservoirs"].get<double>(); 
+                parsed_row[5] = row["Oil_temperature"].is_null() ? numeric_limits<double>::quiet_NaN() : row["Oil_temperature"].get<double>(); 
                 extracted_data.push_back(parsed_row);
+                oilactivation_column.push_back(row["Oil_level"].is_null() ? numeric_limits<double>::quiet_NaN() : row["Oil_level"].get<double>());
             }
-
-            // 4a query
-            parsed_data = json::parse(JSON_buffers[3]);
-            extracted_means[0] = parsed_data[0]["AVG(TP2)"].get<double>();
-            extracted_means[1] = parsed_data[0]["AVG(TP3)"].get<double>();
-            extracted_means[2] = parsed_data[0]["AVG(H1)"].get<double>();
-            extracted_means[3] = parsed_data[0]["AVG(DV_pressure)"].get<double>();
-            extracted_means[4] = parsed_data[0]["AVG(Reservoirs)"].get<double>();
-            extracted_means[5] = parsed_data[0]["AVG(Oil_temperature)"].get<double>();
         }
         catch (const json::parse_error& e) {
             cerr << "Parsing error: " << e.what() << endl;
@@ -288,54 +232,83 @@ void main_loop() {
             cerr << "Generic error during parsing: " << e.what() << endl;
         }
 
-        // STAMPE SU STDOUT ED EVENTUALI COMPUTAZIONI ULTERIORI
-        cout << "### DIFFERENCES RESERVOIRS - TP3 (avg, max, min) ###" << endl;
-        for (const auto& value : extracted_reservoisTP3diff) {
-            cout << value << "\t";
-        }
-        cout << endl << "\n### OIL LEVEL ACTIVATION PERCENTAGE ###" << endl;
-        cout << extracted_oillevelactivation << "%" << endl;
+        // EFFETTUAZIONE DELLE COMPUTAZIONI E STAMPA SU STDOUT DEI RISULTATI
+        // 1) Differenza media, massima e minima tra Reservoirs e TP3 (dato che dovrebbero sempre avere valore simile)
+        vector<double> reservoisTP3diffs;
+        reservoisTP3diffs.reserve(extracted_data.size());
 
-        // Calcolo dell'indice di correlazione di Pearson tra le variabili TP2 (indice [0]) e Oil_temperature (indice [5])
+        for (const auto& data_row : extracted_data) {
+            reservoisTP3diffs.push_back(data_row[4] - data_row[1]);
+        }
+        array<double, 3> reservoisTP3diffs_stats;
+        reservoisTP3diffs_stats[0] = accumulate(reservoisTP3diffs.begin(), reservoisTP3diffs.end(), 0.0)/reservoisTP3diffs.size();
+        reservoisTP3diffs_stats[1] = abs(*(max_element(reservoisTP3diffs.begin(), reservoisTP3diffs.end())));
+        reservoisTP3diffs_stats[2] = abs(*(min_element(reservoisTP3diffs.begin(), reservoisTP3diffs.end())));
+
+        cout << "### DIFFERENCES RESERVOIRS - TP3 (avg, max, min) ###" << endl;
+        for (const auto& value : reservoisTP3diffs_stats) {
+                cout << value << "\t";
+            }
+
+        // 2) Percentuale di volte il cui il segnale elettrico Oil_level, che indica che il livello dell'olio è inferiore ai valori attesi, è attivo
+        double oilactivation_percentage;
+
+        int activation_occurrences = count_if(oilactivation_column.begin(), oilactivation_column.end(), 
+            [](double value) {
+                return value == 1.0;
+            });
+
+        oilactivation_percentage = (static_cast<double>(activation_occurrences) / extracted_data.size()) * 100;
+
+        cout << endl << "\n### OIL LEVEL ACTIVATION PERCENTAGE ###" << endl;
+        cout << oilactivation_percentage << "%" << endl;
+
+        // Calcolo delle medie
+        array<double, 6> means;
+        for (int i = 0; i < 6; ++i) {
+            means[i] = accumulate(extracted_data.begin(), extracted_data.end(), 0.0, [i](double sum, const array<double, 6>& data_row) { return sum + data_row[i]; })/extracted_data.size();  
+        }
+
+        // 3. Calcolo dell'indice di correlazione di Pearson tra le variabili TP2 (indice [0]) e Oil_temperature (indice [5])
         double TP2_oiltemp_corr;
         double num = 0.0, den_1 = 0.0, den_2 = 0.0;
-        if(!isnan(extracted_means[0]) && !isnan(extracted_means[5])) {
+        if(!isnan(means[0]) && !isnan(means[5])) {
             int num_notnan = 0;
             for (int j = 0; j < extracted_data.size(); j++) {
                 if(!isnan(extracted_data[j][0]) && !isnan(extracted_data[j][5])) {
-                    num += (extracted_data[j][0] - extracted_means[0])*(extracted_data[j][5] - extracted_means[5]);
-                    den_1 += pow((extracted_data[j][0] - extracted_means[0]), 2);
-                    den_2 += pow((extracted_data[j][5] - extracted_means[5]), 2);
+                    num += (extracted_data[j][0] - means[0])*(extracted_data[j][5] - means[5]);
+                    den_1 += pow((extracted_data[j][0] - means[0]), 2);
+                    den_2 += pow((extracted_data[j][5] - means[5]), 2);
                     num_notnan = 1;
                 }
             }
             if (num_notnan && den_1 > 0 && den_2 > 0) {  
                 TP2_oiltemp_corr = num / sqrt(den_1 * den_2);
             } else {
-                TP2_oiltemp_corr = nan("");  
+                TP2_oiltemp_corr = numeric_limits<double>::quiet_NaN();  
             }
         } else {
-            TP2_oiltemp_corr = nan("");
+            TP2_oiltemp_corr = numeric_limits<double>::quiet_NaN();
         }
         cout << "\n### CORRELATION BETWEEN TP2 AND OIL TEMPERATURE ###" << endl << TP2_oiltemp_corr << endl;
 
         // Calcolo di varianze e deviazioni standard
         array<double, 6> variances;
-        for(int i = 0; i < extracted_means.size(); i++) {
-            if(!isnan(extracted_means[i])) {
+        for(int i = 0; i < means.size(); i++) {
+            if(!isnan(means[i])) {
                 double accumulator = 0.0; 
                 int nans = 0;
                 for (int j = 0; j < extracted_data.size(); j++) {
                     if (!isnan(extracted_data[j][i])) {
-                        accumulator += pow((extracted_data[j][i] - extracted_means[i]), 2);
+                        accumulator += pow((extracted_data[j][i] - means[i]), 2);
                     } else {
                         nans++;
                     }
                 }
                 int denominator = extracted_data.size() - nans;
-                variances[i] = (denominator > 0) ? (accumulator / denominator) : nan("");
+                variances[i] = (denominator > 0) ? (accumulator / denominator) : numeric_limits<double>::quiet_NaN();
             } else {
-                variances[i] = nan("");
+                variances[i] = numeric_limits<double>::quiet_NaN();
             }
         }
 
@@ -346,9 +319,10 @@ void main_loop() {
         column_names[3] = "DV_pressure";
         column_names[4] = "Reservoirs";
         column_names[5] = "Oil_temperature";
+        
         cout << "\n### AVERAGE, VARIANCE, STANDARD DEVIATION ###" << endl;
         for(int i = 0; i < variances.size(); i++) {
-            cout << column_names[i] << ": " << extracted_means[i] << ", " << variances[i] << ", " << sqrt(variances[i]) << endl;
+            cout << column_names[i] << " " << means[i] << " " << variances[i] << " " << sqrt(variances[i]) << endl;
         }
         cout << endl;
 
@@ -362,11 +336,11 @@ void main_loop() {
         
         int anomalies_counter = 0; 
         for(int i = 0; i < thrice_stddevs.size(); i++) {
-            cout << column_names[i] << ": ";
+            cout << column_names[i] << " ";
             anomalies_counter = 0;
-            if(!isnan(extracted_means[i]) && !isnan(thrice_stddevs[i])) {
+            if(!isnan(means[i]) && !isnan(thrice_stddevs[i])) {
                 for (int j = 0; j < extracted_data.size(); j++) {
-                    if(!isnan(extracted_data[j][i]) && (extracted_data[j][i] < extracted_means[i] - thrice_stddevs[i] || extracted_data[j][i] > extracted_means[i] + thrice_stddevs[i])) {
+                    if(!isnan(extracted_data[j][i]) && (extracted_data[j][i] < means[i] - thrice_stddevs[i] || extracted_data[j][i] > means[i] + thrice_stddevs[i])) {
                         anomalies_counter++;
                     }
                 }
@@ -375,8 +349,6 @@ void main_loop() {
             }
             cout << anomalies_counter << endl;
         }
-
-        cout << endl << "Calculations performed considering " << num_tuples << " tuples." << endl;
 
         // termine della misurazione del tempo impiegato per l'esecuzione di tutto il programma e calcolo del risultato
         auto end_time = high_resolution_clock::now();

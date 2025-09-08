@@ -8,21 +8,118 @@
   </head>
   <body>
     
-    <h1 class="success-title">Select execution mode</h1>
-    <div>
-      <h3><a class="select_mode" href="/run_query/containerized/docker/wasm/node">Wasm run with node in Docker container</a></h3>
-      <h3><a class="select_mode" href="/run_query/containerized/docker/wasm/bun">Wasm run with bun in Docker container</a></h3>
-      <h3><a class="select_mode" href="/run_query/containerized/docker/executable/-">Executable run in Docker container</a></h3>
-      <h3><a class="select_mode" href="/run_query/containerized/podman/wasm/node">Wasm run with node in Podman container</a></h3>
-      <h3><a class="select_mode" href="/run_query/containerized/podman/wasm/bun">Wasm run with bun in Podman container</a></h3>
-      <h3><a class="select_mode" href="/run_query/containerized/podman/executable/-">Executable run in Podman container</a></h3>
-      <h3><a class="select_mode" href="/run_query/noncontainerized/-/wasm/node">Wasm run with node on wsl</a></h3>
-      <h3><a class="select_mode" href="/run_query/noncontainerized/-/wasm/bun">Wasm run with bun on wsl</a></h3>
-      <h3><a class="select_mode" href="/run_query/noncontainerized/-/executable/-">Executable run on wsl</a></h3>
+    <div id="realurl_container" data-realurl="undefined"></div>
+    <h1 class="success-title" style="font-size: 1.4em;">Select execution mode</h1>
+    <div class="test-type-box">
+      <p class="execution-mode-title"><strong>Test HTTP connectivity</strong> (data taken from MySQL database managed by a Python fastAPI server)</p>
+      <div class="clear-container">
+        <div class="containerizedornot-box">
+          <p class="containerizedornot-title" style="background-color: #f3e6e6">Not containerized</p>
+          <p class="select-option" data-urltemplate="/run_query/httpconn/noncontainerized/execlibcurl/-/-/-">Executable using libcurl, run on wsl</p>
+          <p class="select-option" data-urltemplate="/run_query/httpconn/noncontainerized/wasmfetch/-/<runtime_type>/-">Wasm bytecode + JS glue code using Fetch API, run on wsl in 
+            <select class="runtime_type">
+              <option>node</option>
+              <option>bun</option>
+            </select> 
+          runtime</p>
+        </div>
+        <div class="containerizedornot-box">
+          <p class="containerizedornot-title" style="background-color: #f3f9ed">Containerized</p>
+          <p class="select-option" data-urltemplate="/run_query/httpconn/containerized/execlibcurl/-/-/<container_type>">Executable using libcurl, run in
+            <select class="container_type">
+              <option>docker</option>
+              <option>podman</option>
+            </select>  
+          container</p>
+          <p class="select-option" data-urltemplate="/run_query/httpconn/containerized/wasmfetch/-/<runtime_type>/<container_type>">Wasm bytecode + JS glue code using Fetch API, run in
+            <select class="runtime_type">
+              <option>node</option>
+              <option>bun</option>
+            </select> 
+          runtime 
+          in 
+            <select class="container_type">
+              <option>docker</option>
+              <option>podman</option>
+            </select>  
+          container</p>
+        </div>
+      </div>
+    </div>
+    <div class="test-type-box">
+      <p class="execution-mode-title"><strong>Test filesystem access capabilities</strong> (data taken from SQLite database file located in the host filesystem)</p>
+      <div class="clear-container">
+        <div class="containerizedornot-box">
+          <p class="containerizedornot-title" style="background-color: #f3e6e6">Not containerized</p>
+          <p class="select-option" data-urltemplate="/run_query/filesystem/noncontainerized/execsqlite/-/-/-">Executable using sqlite3, run on wsl</p>
+          <p class="select-option" data-urltemplate="/run_query/filesystem/noncontainerized/wasmwasi/-/<runtime_type>/-">Wasm bytecode using sqlite3 + WASI, run on wsl in
+            <select class="runtime_type">
+              <option>wasmtime</option>
+              <option>wasmedge</option>
+            </select> 
+          runtime</p>
+          <p class="select-option" data-urltemplate="/run_query/filesystem/noncontainerized/wasmfs/<nodefs_or_noderawfs>/<runtime_type>/-">Wasm bytecode + JS glue code using sqlite3 +
+            <select class="nodefs_or_noderawfs">
+              <option>nodefs</option>
+              <option>noderawfs</option>
+            </select> 
+            , run on wsl in
+            <select class="runtime_type">
+              <option>node</option>
+              <option>bun</option>
+            </select> 
+          runtime</p>
+        </div>
+        <div class="containerizedornot-box">
+          <p class="containerizedornot-title" style="background-color: #f3f9ed">Containerized</p>
+          <p class="select-option" data-urltemplate="/run_query/filesystem/containerized/execsqlite/-/-/<container_type>">Executable using sqlite3, run in
+            <select class="container_type">
+              <option>docker</option>
+              <option>podman</option>
+            </select> 
+            container</p>
+          <p class="select-option" data-urltemplate="/run_query/filesystem/containerized/wasmwasi/-/<runtime_type>/<container_type>">Wasm bytecode using sqlite3 + WASI, in
+            <select class="runtime_type">
+              <option>wasmtime</option>
+              <option>wasmedge</option>
+            </select> 
+            runtime run in
+            <select class="container_type">
+              <option>docker</option>
+              <option>podman</option>
+            </select>  
+          container</p>
+          <p class="select-option" data-urltemplate="/run_query/filesystem/containerized/wasmfs/<nodefs_or_noderawfs>/<runtime_type>/<container_type>">Wasm bytecode + JS glue code using sqlite3 + 
+            <select class="nodefs_or_noderawfs">
+              <option>nodefs</option>
+              <option>noderawfs</option>
+            </select> 
+            , in
+            <select class="runtime_type">
+              <option>node</option>
+              <option>bun</option>
+            </select>
+            runtime in
+            <select class="container_type">
+              <option>docker</option>
+              <option>podman</option>
+            </select> 
+            container</p>
+          <p title="Warning: this mode is currently not working" class="select-option" data-urltemplate="/run_query/filesystem/containerized/wasmwasi/-/<runtime_type>/wasmworkload">Wasm bytecode using sqlite3 + WASI run with the Docker+Wasm preview, in
+            <select class="runtime_type">
+              <option>wasmtime</option>
+              <option>wasmedge</option>
+            </select> 
+            shim</p>
+        </div>
+      </div>
     </div>
 
-      <label for="num_tuples" style="margin-top:35px;"><strong>Number tuples to consider:</strong></label><br>
-      <input type="number" id="num_tuples" name="num_tuples" value="10" min="1"/>
+      <div style="display: flex; gap: 0.5em; align-items: center">
+        <label for="num_tuples"><strong>Number of tuples to consider:</strong></label><br>
+        <input type="number" id="num_tuples" name="num_tuples" value="10" min="1"/>
+        <button id="go_button">Confirm</button>
+      </div>
 
     <footer class="fixed">
       Project aiming to conduct performance studies and confrontations regarding containerization and WebAssembly.

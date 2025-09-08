@@ -2,11 +2,39 @@
 **/__pycache__
 .vscode/
 
+##################################################
 # DB
 import-in-mysql.sql
-db-api/mysql/aircompressor_cleaned.csv
+db-api/database/aircompressor_cleaned.csv
+**/db/aircompressor.db
 
+##################################################
 # File compilati
+
+# src_fetch
 src_fetch/statistics_calc_fetch.js
 src_fetch/statistics_calc_fetch.wasm
+src_fetch/statistics_calc_fetch_multiquery.js
+src_fetch/statistics_calc_fetch_multiquery.wasm
+
+# src_fs
+src_fs/sqlite3.o
+src_fs/statistics_calc_sqlite_nodefs.wasm
+src_fs/statistics_calc_sqlite_nodefs.js
+src_fs/statistics_calc_sqlite_noderawfs.wasm
+src_fs/statistics_calc_sqlite_noderawfs.js
+
+# src_libcurl
 src_libcurl/statistics_calc_libcurl
+src_libcurl/statistics_calc_libcurl_multiquery
+
+# src_rawsqlite
+src_rawsqlite/statistics_calc_sqlite
+
+# src_wasi
+src_wasi/statistics_calc_sqlite.wasm
+
+###################################################
+# Archivi compressi
+src_wasi/libsqlite-3.42.0-wasi-sdk-20.0.tar.gz
+src_fs/sqlite-amalgamation-3470000.zip

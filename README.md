@@ -5,8 +5,10 @@ La presente architettura è stata realizzata con lo scopo di consentire un confr
 sfruttando in varie combinazioni Docker, Podman e Wasm.
 
 Le potenzialità di queste tecnologie che possono essere esplorate con le configurazioni attualmente disponibili sono:
--capacità di accesso a filesystem,
--conettività HTTP.
+
+capacità di accesso a filesystem
+
+connettività HTTP
 
 La struttura è principalmente composta dai seguenti elementi:
 
@@ -14,11 +16,7 @@ La struttura è principalmente composta dai seguenti elementi:
 + Un database SQLite come file aircompressor.db, caricato coi dati in db-api/database/aircompressor_cleaned.csv
 (Si noti che poiché nelle configurazioni presenti i vari eseguibili utilizzano un path relativo per accedere al db, ma si trovano all'interno di cartelle 
 diverse per via delle diverse dipendenze e risorse associate, per far funzionare i test come sono al momento impostati è necessario replicare il database 
-in tutte le seguenti locazioni:
-
---- src_fs/db, 
---- src_rawsqlite/db, 
---- src_wasi/db.
+in tutte le seguenti locazioni: src_fs/db, src_rawsqlite/db, src_wasi/db.
 Si consiglia perciò di creare dapprima il database in uno di questi folder e di realizzare nei due rimanenti degli hard link a quello già esistente.)
 
 + Un programma C++ che utilizza la libreria sqlite3.c per contattare il database sqlite, effettuando una query

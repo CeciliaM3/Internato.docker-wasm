@@ -26,8 +26,10 @@ per prelevare una quantità configurabile di dati ed esegue poi alcuni calcoli s
 Il programma è statistics_calc_sqlite.cpp e può essere compilato a 3 diversi target:
 
 --- eseguibile nativo, compilato con g++, 
+
 --- modulo Webassembly da eseguire con il supporto del glue code Javascript e con accesso a filesystem garantito da NODEFS o NODERAWFS, compilato con em++
 (Tale file Javascript viene generato automaticamente dal compilatore Emscripten e può essere eseguito in runtime Node.js o Bun), 
+
 --- modulo Webassembly da eseguire senza supporto di alcun glue code Javascript e con accesso a filesystem garantito da WASI, compilato con clang++ wasi-compatible (Tale modulo Wasm può essere eseguito in runtime Wasmtime o Wasmedge). 
 Ognuna di queste versioni (eseguibile, wasm-js-nodefs su node, wasm-js-nodefs bun, wasm-js-noderawfs su node, wasm-js-noderawfs su bun, wasm-wasi su wasmtime e wasm-wasi su wasmedge) può poi essere lanciata direttamente sull'host, all'interno di un container Docker o all'interno di un contaianer Podman, per un totale attuale di 21 possibili configurazioni.
 
@@ -42,6 +44,7 @@ per prelevare una quantità configurabile di dati e li elabora in modo analogo a
 Esistono due versioni di questo programma:
 
 --- statistics_calc_libcurl.cpp, che per effettuare le richieste http utilizza la libreria libcurl ed è realizzata per essere compilata con ++ ad eseguibile nativo,
+
 --- statistics_calc_fetch.cpp, che per effettuare le richieste http utilizza la fetch API messa a disposizione da Emscripten ed è realizzata per essere compilata con emcc a modulo Webassembly, da eseguire con il supporto del glue code Javascript. (Glue code sempre eseguibile in runtime Node.js o Bun, sfrutta xhr2 per sopperire alla mancanza di XMLHttpRequest negli ambienti non-browser e riuscire comunque ad inviare le richieste http al server fastAPI)
 Ognuna di queste versioni (eseguibile, wasm-js su node e wasm-js su bun) può poi essere lanciata direttamente sull'host, 
 all'interno di un container Docker o all'interno di un contaianer Podman, per un totale attuale di 9 possibili configurazioni.

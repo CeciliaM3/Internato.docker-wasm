@@ -5,8 +5,8 @@ La presente architettura è stata realizzata con lo scopo di consentire un confr
 sfruttando in varie combinazioni Docker, Podman e Wasm.
 
 Le potenzialità di queste tecnologie che possono essere esplorate con le configurazioni attualmente disponibili sono:
--capacità di accesso a filesystem
--conettività HTTP
+-capacità di accesso a filesystem,
+-conettività HTTP.
 
 La struttura è principalmente composta dai seguenti elementi:
 
@@ -16,9 +16,9 @@ La struttura è principalmente composta dai seguenti elementi:
 diverse per via delle diverse dipendenze e risorse associate, per far funzionare i test come sono al momento impostati è necessario replicare il database 
 in tutte le seguenti locazioni:
 
---- src_fs/db
---- src_rawsqlite/db
---- src_wasi/db
+--- src_fs/db, 
+--- src_rawsqlite/db, 
+--- src_wasi/db.
 Si consiglia perciò di creare dapprima il database in uno di questi folder e di realizzare nei due rimanenti degli hard link a quello già esistente.)
 
 + Un programma C++ che utilizza la libreria sqlite3.c per contattare il database sqlite, effettuando una query
@@ -94,7 +94,9 @@ Esso può essere contattato specificando uno dei seguenti url, che coprono tutte
 
 Per approntare l'architettura per i test occorre quindi:
 Compilare statistics_calc_libcurl.cpp e statistics_calc_fetch.cpp con i seguenti comandi:
+
 --- g++ statistics_calc_libcurl.cpp -o statistics_calc_libcurl -lcurl 
+
 --- emcc statistics_calc_fetch.cpp -o statistics_calc_fetch.js \
     -s WASM=1 -s FETCH=1 -s EXPORTED_FUNCTIONS="['_main', '_callback_timeout']" \
     -sALLOW_MEMORY_GROWTH \
@@ -106,6 +108,7 @@ function emcc() {
 }
 
 Compilare statistics_calc_sqlite.cpp a nativo, modulo wasm+js e modulo wasm+wasi con i seguenti comandi:
+
 --- g++ ../statistics_calc_sqlite.cpp -o statistics_calc_sqlite -lsqlite3 -static 
 
 --- em++ ../statistics_calc_sqlite.cpp sqlite3.o \

@@ -3,8 +3,8 @@ import pandas
 import matplotlib.pyplot as plotter
 from matplotlib.ticker import FixedLocator, NullLocator, FixedFormatter
 
-if len(sys.argv) != 2:
-    print(f"Required parameter missing. Usage: {sys.argv[0]} <cmd_or_curl>")
+if len(sys.argv) not in [2, 3, 4]:
+    print(f"Invalid number of parameters. Usage: {sys.argv[0]} <cmd_or_curl> [xlog] [ylog]")
     sys.exit(1)
     
 opt = sys.argv[1]
@@ -17,6 +17,17 @@ elif opt == "curl":
 else:
     print(f"Invalid parameter. Accepted values: cmd, curl")
     sys.exit(1)
+    
+if any(parameter not in ["xlog", "ylog"] for parameter in sys.argv[2:]):
+   print(f"Invalid parameters given. Usage: {sys.argv[0]} <cmd_or_curl> [xlog] [ylog]")
+   sys.exit(1)
+    
+xlog = False
+ylog = False
+if "xlog" in sys.argv:
+   xlog = True
+if "ylog" in sys.argv:
+   ylog = True
 
 ##############################################################################################################
 # Definizione di tutte le configurazioni per cui sono stati effettuati i test e delle necessarie informazioni associate
@@ -246,48 +257,47 @@ time_ticks = [0.001, 0.005, 0.025, 0.1, 0.5, 2, 10, 50, 240]
 # Definizione della funzione generica che realizza un grafico contenente le spezzate relative ad 
 # un insieme configurabile di comandi all'interno dello stesso piano di coordinate
 def make_graph(dataframe, configs, title, filepath):
-    plotter.figure(figsize=(17,6))
+   plotter.figure(figsize=(17,6))
+   
+   for config in configs:
+      subset = dataframe[dataframe["configuration"] == config[exec_info]]
+      plotter.plot(subset["tuples"], 
+                  subset["mean"], 
+                  linestyle=config["line_style"],
+                  linewidth=2,
+                  label=config["config_name"], 
+                  color=config["line_color"])
 
-    for config in configs:
-        subset = dataframe[dataframe["configuration"] == config[exec_info]]
-        plotter.plot(subset["tuples"], 
-                     subset["mean"], 
-                     linestyle=config["line_style"],
-                     linewidth=2,
-                     label=config["config_name"], 
-                     color=config["line_color"])
+      # Aggiunta intervalli verticali attorno ai punti (rimossi per chiarezza grafica)
+      # plotter.errorbar(
+         # subset["tuples"],
+         # subset["mean"],
+         # yerr=[subset["mean"] - subset["min"], subset["max"] - subset["mean"]],
+         # fmt="none", color="black", alpha=0.5, capsize=3)
+         
+   plotter.title(title, fontsize=17, fontweight="semibold", pad=21)
+   plotter.legend(loc="upper center", 
+                  bbox_to_anchor=(0.5, -0.2),
+                  fontsize=11, 
+                  ncol=2)
+   plotter.grid(True)
+   
+   ax = plotter.gca()
 
-        # Aggiunta intervalli verticali attorno ai punti (rimossi per chiarezza grafica)
-        # plotter.errorbar(
-            # subset["tuples"],
-            # subset["mean"],
-            # yerr=[subset["mean"] - subset["min"], subset["max"] - subset["mean"]],
-            # fmt="none", color="gray", alpha=0.5, capsize=5, elinewidth=1.5, ecolor="black")
+   plotter.xlabel("Number of tuples", fontsize=12, labelpad=15)
+   plotter.xscale("log" if xlog else "linear")
+   ax.xaxis.set_major_locator(FixedLocator(tuple_quantities))
+   ax.xaxis.set_ticklabels(x_tick_labels)
+   ax.xaxis.set_minor_locator(NullLocator())
 
-    plotter.title(title, fontsize=17, fontweight="semibold", pad=21)
-    plotter.legend(loc="upper center", 
-                   bbox_to_anchor=(0.5, -0.2),
-                   fontsize=11, 
-                   ncol=2)
-    plotter.grid(True)
-    
-    ax = plotter.gca()
-    # ax.set_autoscale_on(False)
-    
-    plotter.xlabel("Number of tuples", fontsize=12, labelpad=15)
-    plotter.xscale("log")
-    ax.xaxis.set_major_locator(FixedLocator(tuple_quantities))
-    ax.xaxis.set_ticklabels(x_tick_labels)
-    ax.xaxis.set_minor_locator(NullLocator())
-    
-    plotter.ylabel("Average time (s)", fontsize=12, labelpad=15)
-    plotter.yscale("log")
-    plotter.ylim(time_ticks[0], time_ticks[-1])
-    ax.yaxis.set_major_locator(FixedLocator(time_ticks))
-    ax.yaxis.set_major_formatter(FixedFormatter([str(tick) for tick in time_ticks]))
-    ax.yaxis.set_minor_locator(NullLocator())
-    
-    plotter.savefig(filepath, bbox_inches="tight", dpi=300)
+   plotter.ylabel("Average time (s)", fontsize=12, labelpad=15)
+   plotter.yscale("log" if ylog else "linear")
+   plotter.ylim(time_ticks[0], time_ticks[-1])
+   ax.yaxis.set_major_locator(FixedLocator(time_ticks))
+   ax.yaxis.set_major_formatter(FixedFormatter([str(tick) for tick in time_ticks]))
+   ax.yaxis.set_minor_locator(NullLocator())
+   
+   plotter.savefig(filepath, bbox_inches="tight", dpi=300)
     
 ##############################################################################################################
 # Chiamate alla funzionemake_graph() per realizzare e salvare su file gli effettivi grafici

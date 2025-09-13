@@ -43,23 +43,23 @@ fi
 # Eseguibile
 pushd ../src_libcurl
 printf "\nBuilding image with tag <statistics_calc_executable> (Docker).\n\n"
-docker build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_executable .
+time docker build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_executable .
 printf "\nBuilding image with tag <statistics_calc_executable> (Podman).\n\n"
-podman build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_executable .
+time podman build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_executable .
 popd
 
 # Node
 pushd ../src_fetch
 printf "\nBuilding image with tag <statistics_calc_wasm_node> (Docker).\n\n"
-docker build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_wasm_node -f Dockerfile-node .
+time docker build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_wasm_node -f Dockerfile-node .
 printf "\nBuilding image with tag <statistics_calc_wasm_node> (Podman).\n\n"
-podman build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_wasm_node -f Dockerfile-node .
+time podman build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_wasm_node -f Dockerfile-node .
 
 # Bun
 printf "\nBuilding image with tag <statistics_calc_wasm_bun> (Docker).\n\n"
-docker build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_wasm_bun -f Dockerfile-bun .
+time docker build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_wasm_bun -f Dockerfile-bun .
 printf "\nBuilding image with tag <statistics_calc_wasm_bun> (Podman).\n\n"
-podman build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_wasm_bun -f Dockerfile-bun .
+time podman build --build-arg host_address_forenv="$host_address_forbuild" -t statistics_calc_wasm_bun -f Dockerfile-bun .
 popd
 
 ##########################################################################
@@ -67,53 +67,53 @@ popd
 # Eseguibile (control)
 pushd ../src_rawsqlite
 printf "\nBuilding image with tag <statistics_calc_sqlite_executable> (Docker).\n\n"
-docker build -t statistics_calc_sqlite_executable .
+time docker build -t statistics_calc_sqlite_executable .
 printf "\nBuilding image with tag <statistics_calc_sqlite_executable> (Podman).\n\n"
-podman build -t statistics_calc_sqlite_executable .
+time podman build -t statistics_calc_sqlite_executable .
 popd
 
 # WASI, wasmtime
 pushd ../src_wasi
 printf "\nBuilding image with tag <statistics_calc_sqlite_wasmtime> (Docker).\n\n"
-docker build -t statistics_calc_sqlite_wasmtime -f Dockerfile-wasmtime .
+time docker build -t statistics_calc_sqlite_wasmtime -f Dockerfile-wasmtime .
 printf "\nBuilding image with tag <statistics_calc_sqlite_wasmtime> (Podman).\n\n"
-podman build -t statistics_calc_sqlite_wasmtime -f Dockerfile-wasmtime .
+time podman build -t statistics_calc_sqlite_wasmtime -f Dockerfile-wasmtime .
 
 # WASI, wasmedge
 printf "\nBuilding image with tag <statistics_calc_sqlite_wasmedge> (Docker).\n\n"
-docker build -t statistics_calc_sqlite_wasmedge -f Dockerfile-wasmedge .
+time docker build -t statistics_calc_sqlite_wasmedge -f Dockerfile-wasmedge .
 printf "\nBuilding image with tag <statistics_calc_sqlite_wasmedge> (Podman).\n\n"
-podman build -t statistics_calc_sqlite_wasmedge -f Dockerfile-wasmedge .
+time podman build -t statistics_calc_sqlite_wasmedge -f Dockerfile-wasmedge .
 
 # WASI, direct workload (preview)
 printf "\nBuilding image with tag <statistics_calc_sqlite_wasmworkload> (Docker).\n\n"
-docker build --platform=wasi/wasm -t statistics_calc_sqlite_wasmworkload . -f Dockerfile-wasmworkload
+time docker build --platform=wasi/wasm -t statistics_calc_sqlite_wasmworkload . -f Dockerfile-wasmworkload
 popd
 
 # NODEFS, node
 pushd ../src_fs
 printf "\nBuilding image with tag <statistics_calc_sqlite_node_nodefs> (Docker).\n\n"
-docker build -t statistics_calc_sqlite_node_nodefs -f Dockerfile-node-nodefs .
+time docker build -t statistics_calc_sqlite_node_nodefs -f Dockerfile-node-nodefs .
 printf "\nBuilding image with tag <statistics_calc_sqlite_node_nodefs> (Podman).\n\n"
-podman build -t statistics_calc_sqlite_node_nodefs -f Dockerfile-node-nodefs .
+time podman build -t statistics_calc_sqlite_node_nodefs -f Dockerfile-node-nodefs .
 
 # NODEFS, bun
 printf "\nBuilding image with tag <statistics_calc_sqlite_bun_nodefs> (Docker).\n\n"
-docker build -t statistics_calc_sqlite_bun_nodefs -f Dockerfile-bun-nodefs .
+time docker build -t statistics_calc_sqlite_bun_nodefs -f Dockerfile-bun-nodefs .
 printf "\nBuilding image with tag <statistics_calc_sqlite_bun_nodefs> (Podman).\n\n"
-podman build -t statistics_calc_sqlite_bun_nodefs -f Dockerfile-bun-nodefs .
+time podman build -t statistics_calc_sqlite_bun_nodefs -f Dockerfile-bun-nodefs .
 
 # NODERAWFS, node
 printf "\nBuilding image with tag <statistics_calc_sqlite_node_noderawfs> (Docker).\n\n"
-docker build -t statistics_calc_sqlite_node_noderawfs -f Dockerfile-node-noderawfs .
+time docker build -t statistics_calc_sqlite_node_noderawfs -f Dockerfile-node-noderawfs .
 printf "\nBuilding image with tag <statistics_calc_sqlite_node_noderawfs> (Podman).\n\n"
-podman build -t statistics_calc_sqlite_node_noderawfs -f Dockerfile-node-noderawfs .
+time podman build -t statistics_calc_sqlite_node_noderawfs -f Dockerfile-node-noderawfs .
 
 # NODERAWFS, bun
 printf "\nBuilding image with tag <statistics_calc_sqlite_bun_noderawfs> (Docker).\n\n"
-docker build -t statistics_calc_sqlite_bun_noderawfs -f Dockerfile-bun-noderawfs .
+time docker build -t statistics_calc_sqlite_bun_noderawfs -f Dockerfile-bun-noderawfs .
 printf "\nBuilding image with tag <statistics_calc_sqlite_bun_noderawfs> (Podman).\n\n"
-podman build -t statistics_calc_sqlite_bun_noderawfs -f Dockerfile-bun-noderawfs .
+time podman build -t statistics_calc_sqlite_bun_noderawfs -f Dockerfile-bun-noderawfs .
 popd
 
 printf "\nAll Docker and Podman images and containers have been rebuilt.\n"

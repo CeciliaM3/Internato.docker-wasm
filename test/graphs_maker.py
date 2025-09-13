@@ -257,7 +257,7 @@ time_ticks = [0.001, 0.005, 0.025, 0.1, 0.5, 2, 10, 50, 240]
 # Definizione della funzione generica che realizza un grafico contenente le spezzate relative ad 
 # un insieme configurabile di comandi all'interno dello stesso piano di coordinate
 def make_graph(dataframe, configs, title, filepath):
-   plotter.figure(figsize=(17,6))
+   plotter.figure(figsize=(21, 8))
    
    for config in configs:
       subset = dataframe[dataframe["configuration"] == config[exec_info]]
@@ -277,7 +277,7 @@ def make_graph(dataframe, configs, title, filepath):
          
    plotter.title(title, fontsize=17, fontweight="semibold", pad=21)
    plotter.legend(loc="upper center", 
-                  bbox_to_anchor=(0.5, -0.2),
+                  bbox_to_anchor=(0.5, -0.15),
                   fontsize=11, 
                   ncol=2)
    plotter.grid(True)

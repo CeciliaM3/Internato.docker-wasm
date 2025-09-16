@@ -22,12 +22,12 @@ if any(parameter not in ["xlog", "ylog"] for parameter in sys.argv[2:]):
    print(f"Invalid parameters given. Usage: {sys.argv[0]} <cmd_or_curl> [xlog] [ylog]")
    sys.exit(1)
     
-xlog = False
-ylog = False
+xscale = "linear"
+yscale = "linear"
 if "xlog" in sys.argv:
-   xlog = True
+   xscale = "log"
 if "ylog" in sys.argv:
-   ylog = True
+   yscale = "log"
 
 ##############################################################################################################
 # Definizione di tutte le configurazioni per cui sono stati effettuati i test e delle necessarie informazioni associate
@@ -250,13 +250,21 @@ all_configurations = [
 ]
 
 tuple_quantities = [100, 160, 270, 450, 750, 1200, 2000, 3500, 5600, 9400, 15500, 25500, 45000, 70000, 115000, 190000, 320000, 530000, 880000, 1500000]
-x_tick_labels = ["100", "160", "270", "450", "750", "1.2k", "2.0k", "3.5k", "5.6k", "9.4k", "15.5k", "25.5k", "45k", "70k", "115k", "190k", "320k", "530k", "880k", "1.5M"]
-time_ticks = [0.001, 0.005, 0.025, 0.1, 0.5, 2, 10, 50, 240]
+x_tuple_ticks = {
+   "log": ["100", "160", "270", "450", "750", "1.2k", "2.0k", "3.5k", "5.6k", "9.4k", "15.5k", "25.5k", "45k", "70k", "115k", "190k", "320k", "530k", "880k", "1.5M"],
+   "linear": ["", "", "", "", "", "", "", "", "", "", "", "", "", "70k", "115k", "190k", "320k", "530k", "880k", "1.5M"]
+}
+
+y_time_ticks = {
+   "log": [0.001, 0.005, 0.025, 0.1, 0.5, 2, 10, 50, 240],
+   "linear": [0, 20, 40, 60, 80, 100, 120, 140, 160, 180]
+}
 
 ##############################################################################################################
 # Definizione della funzione generica che realizza un grafico contenente le spezzate relative ad 
 # un insieme configurabile di comandi all'interno dello stesso piano di coordinate
 def make_graph(dataframe, configs, title, filepath):
+
    plotter.figure(figsize=(21, 8))
    
    for config in configs:
@@ -285,16 +293,18 @@ def make_graph(dataframe, configs, title, filepath):
    ax = plotter.gca()
 
    plotter.xlabel("Number of tuples", fontsize=12, labelpad=15)
-   plotter.xscale("log" if xlog else "linear")
+   plotter.xscale(xscale)
+   if (xscale == "linear"):
+      plotter.xlim(0, tuple_quantities[-1])
    ax.xaxis.set_major_locator(FixedLocator(tuple_quantities))
-   ax.xaxis.set_ticklabels(x_tick_labels)
+   ax.xaxis.set_ticklabels(x_tuple_ticks[xscale])
    ax.xaxis.set_minor_locator(NullLocator())
 
    plotter.ylabel("Average time (s)", fontsize=12, labelpad=15)
-   plotter.yscale("log" if ylog else "linear")
-   plotter.ylim(time_ticks[0], time_ticks[-1])
-   ax.yaxis.set_major_locator(FixedLocator(time_ticks))
-   ax.yaxis.set_major_formatter(FixedFormatter([str(tick) for tick in time_ticks]))
+   plotter.yscale(yscale)
+   plotter.ylim(y_time_ticks[yscale][0], y_time_ticks[yscale][-1])
+   ax.yaxis.set_major_locator(FixedLocator(y_time_ticks[yscale]))
+   ax.yaxis.set_major_formatter(FixedFormatter([str(tick) for tick in y_time_ticks[yscale]]))
    ax.yaxis.set_minor_locator(NullLocator())
    
    plotter.savefig(filepath, bbox_inches="tight", dpi=300)
